@@ -327,15 +327,11 @@
         ctx.fillStyle = '#ff0000';
         ctx.font = 'bold 52px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('SUBMARINE SONAR', canvasW / 2, canvasH / 2 - 100);
-
-        ctx.fillStyle = 'rgba(255, 80, 50, 0.35)';
-        ctx.font = 'italic 15px monospace';
-        ctx.fillText('THE COLD WAR BELOW', canvasW / 2, canvasH / 2 - 70);
+        ctx.fillText('SONAR', canvasW / 2, canvasH / 2 - 100);
 
         ctx.fillStyle = 'rgba(255, 60, 40, 0.6)';
         ctx.font = '18px monospace';
-        ctx.fillText('NAVIGATE THE CANYON. REACH THE PORT.', canvasW / 2, canvasH / 2 - 40);
+        ctx.fillText('NAVIGATE THE CANYON. REACH THE PORT.', canvasW / 2, canvasH / 2 - 60);
 
         ctx.fillStyle = 'rgba(255, 60, 40, 0.35)';
         ctx.font = '13px monospace';
@@ -344,11 +340,9 @@
         ctx.fillText('[ SHIFT ] SILENT RUNNING    [ E ] DEPTH CHARGE', canvasW / 2, ctrlY + 18);
         ctx.fillText('[ P / ESC ] PAUSE', canvasW / 2, ctrlY + 36);
 
-        if (Math.floor(stateTimer * 2) % 2 === 0) {
-            ctx.fillStyle = 'rgba(255, 80, 60, 0.8)';
-            ctx.font = '20px monospace';
-            ctx.fillText('PRESS ENTER TO BEGIN', canvasW / 2, canvasH / 2 + 65);
-        }
+        ctx.fillStyle = 'rgba(255, 80, 60, 0.6)';
+        ctx.font = '20px monospace';
+        ctx.fillText('PRESS ENTER TO BEGIN', canvasW / 2, canvasH / 2 + 65);
 
         if (bestScore > 0) {
             ctx.fillStyle = 'rgba(255,180,0,0.5)';
@@ -361,12 +355,25 @@
         drawVignette(ctx, canvasW, canvasH);
     }
 
+    // Fixed radar blips — static positions, light up when sweep passes
+    var radarBlips = [
+        { a: 0.4,  r: 0.7  },
+        { a: 1.1,  r: 0.45 },
+        { a: 1.8,  r: 0.82 },
+        { a: 2.5,  r: 0.35 },
+        { a: 3.3,  r: 0.6  },
+        { a: 4.0,  r: 0.9  },
+        { a: 4.9,  r: 0.5  },
+        { a: 5.6,  r: 0.72 },
+    ];
+
     function drawTitleRadar(ctx, now, canvasW, canvasH) {
         titleSweepAngle = (now * 0.8) % (Math.PI * 2);
         var cx = canvasW / 2;
         var cy = canvasH / 2 + 160;
         var r = 80;
 
+        // Grid
         ctx.strokeStyle = 'rgba(255,40,30,0.12)';
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
@@ -376,6 +383,7 @@
         ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
         ctx.stroke();
 
+        // Sweep wedge
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(cx, cy);
@@ -388,6 +396,7 @@
         ctx.fill();
         ctx.restore();
 
+        // Sweep line
         ctx.beginPath();
         ctx.moveTo(cx, cy);
         ctx.lineTo(cx + Math.cos(titleSweepAngle) * r, cy + Math.sin(titleSweepAngle) * r);
@@ -395,19 +404,26 @@
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        var blipAngle = titleSweepAngle - 0.3;
-        var blipR = r * 0.6;
-        ctx.fillStyle = 'rgba(255,40,30,0.4)';
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(blipAngle) * blipR, cy + Math.sin(blipAngle) * blipR, 2, 0, Math.PI * 2);
-        ctx.fill();
-
-        var blip2Angle = titleSweepAngle - 0.15;
-        var blip2R = r * 0.35;
-        ctx.fillStyle = 'rgba(255,40,30,0.25)';
-        ctx.beginPath();
-        ctx.arc(cx + Math.cos(blip2Angle) * blip2R, cy + Math.sin(blip2Angle) * blip2R, 1.5, 0, Math.PI * 2);
-        ctx.fill();
+        // Blips — fixed positions, lit by sweep
+        var BLIP_FADE = 1.5; // seconds to fade after sweep passes
+        var TWO_PI = Math.PI * 2;
+        for (var i = 0; i < radarBlips.length; i++) {
+            var b = radarBlips[i];
+            // How long ago did the sweep pass this blip's angle?
+            var angleDiff = ((titleSweepAngle - b.a) % TWO_PI + TWO_PI) % TWO_PI;
+            var timeSinceSweep = angleDiff / (0.8 * TWO_PI) * (TWO_PI / 0.8);
+            // Convert angle difference to time: sweep speed is 0.8 rad/s
+            timeSinceSweep = angleDiff / 0.8;
+            var alpha = timeSinceSweep < BLIP_FADE ? 0.6 * (1 - timeSinceSweep / BLIP_FADE) : 0;
+            if (alpha > 0.01) {
+                var bx = cx + Math.cos(b.a) * r * b.r;
+                var by = cy + Math.sin(b.a) * r * b.r;
+                ctx.fillStyle = 'rgba(255,40,30,' + alpha + ')';
+                ctx.beginPath();
+                ctx.arc(bx, by, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
     }
 
     // --- Win Screen ---

@@ -94,74 +94,93 @@
         var zone2Top = G.zoneYBoundary(0.50);
         var zone3Top = G.zoneYBoundary(0.75);
 
-        // === ZONE 1: OPEN WATERS ===
-        var tutMineY = G.SPAWN_Y - 2500;
-        placeMine(tutMineY, 60);
+        // === ZONE 1: OPEN WATERS (tutorial spacing) ===
+        // Mines first: player learns what circles are
+        placeMine(G.SPAWN_Y - 1200, 60);
+        placeMine(G.SPAWN_Y - 1800, 80);
+        placeMine(G.SPAWN_Y - 2200, 100);
 
-        var tutEsubY = G.SPAWN_Y - 3500;
-        placeEnemySub(tutEsubY, 80);
+        // Sharks second: player learns what arrowheads are
+        placeShark(G.SPAWN_Y - 3000, 200);
+        placeMine(G.SPAWN_Y - 3200, 120); // mix in a mine too
 
-        var tutClusterY = G.SPAWN_Y - 4500;
-        placeMineCluster(tutClusterY, 3);
-
-        placeShark(G.SPAWN_Y - 3000, 300);
+        // Enemy sub last: player learns the real threat
+        placeEnemySub(G.SPAWN_Y - 4200, 100);
+        placeMineCluster(G.SPAWN_Y - 4800, 3);
         if (rand() < 0.5) {
             placeShark(zone1Top + 500, 300);
         }
 
-        // === ZONE 2: THE NARROWS ===
+        // === ZONE 2: THE NARROWS — gradual ramp ===
         var z2Span = zone1Top - zone2Top;
         var z2Slots = Math.floor(z2Span / SLOT_H);
         for (var s = 0; s < z2Slots; s++) {
             var slotY = zone1Top - s * SLOT_H - SLOT_H / 2;
-            if (s % 2 === 0) {
-                placeMineCluster(slotY, 2 + Math.floor(rand() * 2));
+            var slotProgress = s / z2Slots; // 0 = start of zone, 1 = end
+            // Mines get denser as you go deeper
+            if (slotProgress < 0.3) {
+                // Early: sparse single mines
+                if (rand() < 0.4) placeMine(slotY, SLOT_H * 0.7);
+            } else if (slotProgress < 0.6) {
+                // Middle: occasional clusters
+                if (rand() < 0.5) placeMineCluster(slotY, 2);
+                else if (rand() < 0.3) placeMine(slotY, SLOT_H * 0.6);
             } else {
-                if (rand() < 0.5) placeMine(slotY, SLOT_H * 0.6);
+                // Late: denser clusters
+                placeMineCluster(slotY, 2 + Math.floor(rand() * 2));
             }
         }
-        placeEnemySub(zone1Top - z2Span * 0.25, 300);
-        placeEnemySub(zone1Top - z2Span * 0.65, 300);
-        if (rand() < 0.5) {
-            placeEnemySub(zone1Top - z2Span * 0.45, 200);
-        }
-        placeShark(zone1Top - z2Span * 0.3, 400);
-        placeShark(zone1Top - z2Span * 0.7, 400);
+        // Enemy subs in the back half only
+        placeEnemySub(zone1Top - z2Span * 0.55, 300);
+        placeEnemySub(zone1Top - z2Span * 0.8, 250);
+        // One shark mid-zone
+        placeShark(zone1Top - z2Span * 0.4, 400);
+        placeShark(zone1Top - z2Span * 0.75, 350);
 
-        // === ZONE 3: DEVIL'S CORRIDOR ===
+        // === ZONE 3: DEVIL'S CORRIDOR — dense but ramping ===
         var z3Span = zone2Top - zone3Top;
         var z3Slots = Math.floor(z3Span / SLOT_H);
         for (var s = 0; s < z3Slots; s++) {
             var slotY = zone2Top - s * SLOT_H - SLOT_H / 2;
-            placeMineCluster(slotY, 2 + Math.floor(rand() * 3));
-            if (rand() < 0.4) {
-                placeMine(slotY + 100, 150);
+            var slotProgress = s / z3Slots;
+            if (slotProgress < 0.25) {
+                // Ease in from The Narrows density
+                placeMineCluster(slotY, 2);
+            } else {
+                // Full density
+                placeMineCluster(slotY, 2 + Math.floor(rand() * 3));
+                if (rand() < 0.3) placeMine(slotY + 100, 150);
             }
         }
-        placeEnemySub(zone2Top - z3Span * 0.15, 200);
-        placeEnemySub(zone2Top - z3Span * 0.4, 200);
-        placeEnemySub(zone2Top - z3Span * 0.65, 200);
-        if (rand() < 0.6) {
-            placeEnemySub(zone2Top - z3Span * 0.85, 200);
+        // Enemy subs spread through zone, more toward the end
+        placeEnemySub(zone2Top - z3Span * 0.2, 200);
+        placeEnemySub(zone2Top - z3Span * 0.5, 200);
+        placeEnemySub(zone2Top - z3Span * 0.75, 200);
+        if (rand() < 0.5) {
+            placeEnemySub(zone2Top - z3Span * 0.9, 180);
         }
-        for (var s = 0; s < 3 + (rand() < 0.5 ? 1 : 0); s++) {
-            placeShark(zone2Top - z3Span * (0.15 + s * 0.25), 300);
+        // Sharks scattered
+        for (var s = 0; s < 3; s++) {
+            placeShark(zone2Top - z3Span * (0.2 + s * 0.3), 300);
         }
 
-        // === ZONE 4: FREEDOM ===
+        // === ZONE 4: FREEDOM — open water, fewer mines, aggressive subs ===
         var z4Span = zone3Top - G.DOCK_Y - 400;
         var z4Slots = Math.floor(z4Span / (SLOT_H * 1.5));
         for (var s = 0; s < z4Slots; s++) {
             var slotY = zone3Top - 200 - s * SLOT_H * 1.5;
-            if (rand() < 0.35) {
+            // Sparse mines — open water
+            if (rand() < 0.25) {
                 placeMine(slotY, SLOT_H);
             }
         }
-        placeEnemySub(zone3Top - z4Span * 0.2, 300);
-        placeEnemySub(zone3Top - z4Span * 0.5, 300);
+        // Aggressive enemy subs — the real threat in Freedom
+        placeEnemySub(zone3Top - z4Span * 0.2, 350);
+        placeEnemySub(zone3Top - z4Span * 0.5, 350);
         placeEnemySub(zone3Top - z4Span * 0.8, 300);
-        for (var s = 0; s < 4 + (rand() < 0.5 ? 1 : 0); s++) {
-            placeShark(zone3Top - z4Span * (0.1 + s * 0.2), 400);
+        // Sharks in the open water
+        for (var s = 0; s < 3 + (rand() < 0.5 ? 1 : 0); s++) {
+            placeShark(zone3Top - z4Span * (0.1 + s * 0.25), 400);
         }
     }
 

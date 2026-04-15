@@ -251,7 +251,7 @@
 
         // --- TITLE STATE ---
         if (gameState === G.STATE.TITLE) {
-            updateDocTitle('Submarine Sonar');
+            updateDocTitle('Sonar');
             G.renderer.drawTitleScreen(ctx, now, stateTimer, canvasW, canvasH, bestScore);
             requestAnimationFrame(frame);
             return;
@@ -259,7 +259,7 @@
 
         // --- WIN STATE ---
         if (gameState === G.STATE.WIN) {
-            updateDocTitle('Submarine Sonar - MISSION COMPLETE');
+            updateDocTitle('Sonar - MISSION COMPLETE');
             G.renderer.drawWinScreen(ctx, stateTimer, canvasW, canvasH, lastScore, bestScore, winTime, startTime, G.pingCount, scoreTimeBonus, scorePingPenalty);
             requestAnimationFrame(frame);
             return;
@@ -269,11 +269,11 @@
 
         // --- Page title for playing/dead ---
         if (gameState === G.STATE.DEAD) {
-            updateDocTitle('Submarine Sonar - HULL BREACH');
+            updateDocTitle('Sonar - HULL BREACH');
         } else if (paused) {
-            updateDocTitle('Submarine Sonar - PAUSED');
+            updateDocTitle('Sonar - PAUSED');
         } else {
-            updateDocTitle('Submarine Sonar - ' + (currentZone || 'DIVING'));
+            updateDocTitle('Sonar - ' + (currentZone || 'DIVING'));
         }
 
         // --- Pause ---

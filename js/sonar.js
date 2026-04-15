@@ -78,15 +78,15 @@
 
             var sox = pulse.ox - camera.x;
             var soy = pulse.oy - camera.y;
-            var ringAlpha = Math.max(0, 0.35 * (1 - elapsed / 4));
+            var ringAlpha = ringR < G.MAX_RANGE ? Math.max(0, 0.35 * (1 - ringR / G.MAX_RANGE)) : 0;
             if (ringAlpha > 0 && ringR > 0) {
                 // Main ring
                 ctx.beginPath();
                 ctx.arc(sox, soy, ringR, 0, Math.PI * 2);
-                ctx.lineWidth = 6;
+                ctx.lineWidth = 12;
                 ctx.strokeStyle = 'rgba(255,0,0,' + (ringAlpha * 0.25) + ')';
                 ctx.stroke();
-                ctx.lineWidth = 1.5;
+                ctx.lineWidth = 3;
                 ctx.strokeStyle = 'rgba(255,0,0,' + ringAlpha + ')';
                 ctx.stroke();
 
