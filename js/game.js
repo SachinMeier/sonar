@@ -255,6 +255,12 @@
                 lastTime = 0; // Reset to avoid dt spike on unpause
             }
         }
+        if (e.code === 'KeyQ' && gameState === G.STATE.PLAYING && paused) {
+            paused = false;
+            G.audio.resumeAudio();
+            gameState = G.STATE.TITLE;
+            stateTimer = 0;
+        }
         if (e.code === 'Escape' && gameState === G.STATE.DEAD && stateTimer > 1.0) {
             gameState = G.STATE.TITLE;
             stateTimer = 0;
@@ -348,6 +354,9 @@
             ctx.fillStyle = 'rgba(255,80,60,0.5)';
             ctx.font = '16px monospace';
             ctx.fillText('PRESS P TO RESUME', canvasW / 2, canvasH / 2 + 25);
+            ctx.fillStyle = 'rgba(255,80,60,0.35)';
+            ctx.font = '14px monospace';
+            ctx.fillText('PRESS Q TO QUIT', canvasW / 2, canvasH / 2 + 50);
             G.renderer.drawScanlines(ctx, canvasW, canvasH);
             G.renderer.drawVignette(ctx, canvasW, canvasH);
             requestAnimationFrame(frame);
