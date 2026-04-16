@@ -1,6 +1,6 @@
-# Submarine Sonar
+# Sonar
 
-A sonar-driven stealth game inspired by *The Hunt for Red October*. You command a submarine navigating blind through a mine-filled canyon. The only way to see is to ping — but pinging reveals your position to enemy submarines that will hunt you down.
+Navigate your submarine through treacherous waters to freedom. A sonar-driven stealth game inspired by *The Hunt for Red October*. You command a submarine navigating blind through a mine-filled canyon. The only way to see is to ping — but pinging reveals your position to enemy submarines that will hunt you down. Fire torpedoes to clear a path — they travel forward from your sub, emitting mini-pings that light up the area around them, but the noise alerts enemy subs to your presence.
 
 ## The Idea
 
@@ -22,7 +22,7 @@ The canyon is divided into four zones, each with its own character:
 
 **The Narrows** — The canyon tightens and begins to curve. Mines cluster at the turns. The first enemy submarines appear. You start to feel the tradeoff: the walls are close and you need to see, but pinging wakes up the hunters.
 
-**Devil's Corridor** — Chokepoints, dense mines, aggressive enemies. The canyon pinches to barely wider than your sub. Depth charges become valuable here. This is where most runs end.
+**Devil's Corridor** — Chokepoints, dense mines, aggressive enemies. The canyon pinches to barely wider than your sub. Torpedoes become valuable here. This is where most runs end.
 
 **Freedom** — The canyon opens into a wide bay dotted with rock formations. The name is the reward. You can see the end. The enemies here are the fastest and most persistent, but the open water gives you room to maneuver. Thread between the rocks, reach the dock, and you're home.
 
@@ -37,7 +37,7 @@ When you arrive: *Welcome to America*.
 | **S** | Reverse (slow) |
 | **Space** | Sonar ping |
 | **Shift** (hold) | Silent running — cuts engines, enemies lose track |
-| **E** | Drop depth charge (3 per run) |
+| **F** | Fire torpedo (3 per run) |
 | **P / Esc** | Pause |
 | **Enter** | Start / restart |
 

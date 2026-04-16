@@ -110,54 +110,6 @@
         }
     }
 
-    // --- Threat Direction Arrows ---
-    function drawThreatIndicators(ctx, now, player, canvasW, canvasH) {
-        for (var i = 0; i < G.objects.length; i++) {
-            var obj = G.objects[i];
-            if (obj.type !== G.OBJ_TYPE.ENEMY_SUB || !obj.alive) continue;
-            if (obj.aiState !== 'intercept' && obj.aiState !== 'listening') continue;
-            if (!obj.alertTime) continue;
-
-            var dx = obj.x - player.x, dy = obj.y - player.y;
-            var dist = Math.sqrt(dx * dx + dy * dy);
-            // Skip if enemy is on-screen (no need for edge arrow)
-            if (Math.abs(dx) < canvasW / 2 - 50 && Math.abs(dy) < canvasH / 2 - 50) continue;
-            var angle = Math.atan2(dy, dx);
-            var marginX = canvasW / 2 - 35;
-            var marginY = canvasH / 2 - 35;
-            var edgeX = canvasW / 2 + Math.cos(angle) * marginX;
-            var edgeY = canvasH / 2 + Math.sin(angle) * marginY;
-
-            // Fade in on alert, stay visible while intercepting, fade when listening winds down
-            var timeSinceAlert = now - obj.alertTime;
-            var fadeAlpha;
-            if (timeSinceAlert < 0.3) {
-                fadeAlpha = timeSinceAlert / 0.3;
-            } else if (obj.aiState === 'intercept') {
-                fadeAlpha = 1;
-            } else if (obj.aiState === 'listening') {
-                fadeAlpha = Math.max(0, obj.listenTimer / 3);
-            } else {
-                fadeAlpha = 0;
-            }
-            var pulse = 0.5 + 0.5 * Math.sin(now * 8);
-            var alpha = fadeAlpha * 0.7 * pulse;
-
-            ctx.save();
-            ctx.translate(edgeX, edgeY);
-            ctx.rotate(angle);
-            ctx.fillStyle = 'rgba(255,180,0,' + Math.max(0, alpha) + ')';
-            ctx.beginPath();
-            ctx.moveTo(10, 0);
-            ctx.lineTo(-6, -7);
-            ctx.lineTo(-3, 0);
-            ctx.lineTo(-6, 7);
-            ctx.closePath();
-            ctx.fill();
-            ctx.restore();
-        }
-    }
-
     // --- Blast Effects ---
     G.blastEffects = [];
 
@@ -170,7 +122,7 @@
                 continue;
             }
             var progress = age / b.duration;
-            var radius = G.DC_BLAST_RADIUS * (0.3 + progress * 0.7);
+            var radius = G.TORPEDO_BLAST_RADIUS * (0.3 + progress * 0.7);
             var alpha = 0.6 * (1 - progress);
             var sx = b.x - camera.x;
             var sy = b.y - camera.y;
@@ -191,20 +143,29 @@
         }
     }
 
-    // --- Active Depth Charges ---
-    function drawActiveCharges(ctx, now, activeCharges, camera) {
-        for (var i = 0; i < activeCharges.length; i++) {
-            var dc = activeCharges[i];
-            var sx = dc.x - camera.x;
-            var sy = dc.y - camera.y;
-            var blink = Math.sin(dc.fuse * 12) > 0;
-            var r = 4;
+    // --- Active Torpedoes ---
+    function drawActiveTorpedoes(ctx, now, activeTorpedoes, camera) {
+        for (var i = 0; i < activeTorpedoes.length; i++) {
+            var torp = activeTorpedoes[i];
+            var sx = torp.x - camera.x;
+            var sy = torp.y - camera.y;
+            var rot = torp.rot;
+            var cosR = Math.cos(rot);
+            var sinR = Math.sin(rot);
+            // Missile shape: narrow pointed body ~12px long, 4px wide
+            // Diamond/chevron pointing in torp.rot direction
+            var len = 6;   // half-length
+            var wid = 2;   // half-width
             ctx.beginPath();
-            ctx.arc(sx, sy, r, 0, Math.PI * 2);
-            ctx.fillStyle = blink ? 'rgba(255,100,30,0.8)' : 'rgba(255,40,20,0.4)';
+            ctx.moveTo(sx + cosR * len,          sy + sinR * len);           // nose
+            ctx.lineTo(sx - sinR * wid - cosR * 2, sy + cosR * wid - sinR * 2); // left shoulder
+            ctx.lineTo(sx - cosR * len,          sy - sinR * len);           // tail
+            ctx.lineTo(sx + sinR * wid - cosR * 2, sy - cosR * wid - sinR * 2); // right shoulder
+            ctx.closePath();
+            ctx.fillStyle = 'rgba(255,30,20,0.9)';
             ctx.fill();
             ctx.lineWidth = 1;
-            ctx.strokeStyle = 'rgba(255,80,30,0.6)';
+            ctx.strokeStyle = 'rgba(255,60,30,0.8)';
             ctx.stroke();
         }
     }
@@ -302,82 +263,64 @@
         ctx.fillRect(mmX, dockMmY, mmW, 2);
     }
 
-    // --- Close-Call Flash ---
-    function drawCloseCallFlash(ctx, closeCallTimer, canvasW, canvasH) {
-        if (closeCallTimer <= 0) return;
-        var alpha = closeCallTimer / 0.6;
-        // Brief screen-edge warning flash
-        if (alpha > 0.5) {
-            var edgeAlpha = (alpha - 0.5) * 0.15;
-            ctx.strokeStyle = 'rgba(255,200,0,' + edgeAlpha + ')';
-            ctx.lineWidth = 3;
-            ctx.strokeRect(2, 2, canvasW - 4, canvasH - 4);
-        }
-        var pulse = 0.7 + 0.3 * Math.sin(closeCallTimer * 25);
-        ctx.fillStyle = 'rgba(255,220,0,' + (alpha * 0.5 * pulse) + ')';
-        ctx.font = 'bold 48px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('!', canvasW / 2, canvasH / 2 + 80);
-    }
-
     // --- Title Screen ---
     var titleSweepAngle = 0;
 
     function drawTitleScreen(ctx, now, stateTimer, canvasW, canvasH, bestScore) {
+        // Radar first (behind everything)
+        drawTitleRadar(ctx, now, canvasW, canvasH);
+
+        // Text on top of radar
         ctx.fillStyle = '#ff0000';
         ctx.font = 'bold 52px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('SONAR', canvasW / 2, canvasH / 2 - 100);
+        ctx.fillText('SONAR', canvasW / 2, canvasH / 2 - 60);
 
         ctx.fillStyle = 'rgba(255, 60, 40, 0.6)';
         ctx.font = '18px monospace';
-        ctx.fillText('NAVIGATE THE CANYON. REACH THE PORT.', canvasW / 2, canvasH / 2 - 60);
-
-        ctx.fillStyle = 'rgba(255, 60, 40, 0.35)';
-        ctx.font = '13px monospace';
-        var ctrlY = canvasH / 2 - 5;
-        ctx.fillText('[ WASD ] MOVE    [ SPACE ] SONAR PING', canvasW / 2, ctrlY);
-        ctx.fillText('[ SHIFT ] SILENT RUNNING    [ E ] DEPTH CHARGE', canvasW / 2, ctrlY + 18);
-        ctx.fillText('[ P / ESC ] PAUSE', canvasW / 2, ctrlY + 36);
+        ctx.fillText('NAVIGATE THE CANYON. REACH THE PORT.', canvasW / 2, canvasH / 2 - 20);
 
         ctx.fillStyle = 'rgba(255, 80, 60, 0.6)';
         ctx.font = '20px monospace';
-        ctx.fillText('PRESS ENTER TO BEGIN', canvasW / 2, canvasH / 2 + 65);
+        ctx.fillText('PRESS ENTER TO BEGIN', canvasW / 2, canvasH / 2 + 50);
 
         if (bestScore > 0) {
             ctx.fillStyle = 'rgba(255,180,0,0.5)';
             ctx.font = '15px monospace';
-            ctx.fillText('BEST SCORE: ' + bestScore + '  RANK: ' + getRank(bestScore), canvasW / 2, canvasH / 2 + 100);
+            ctx.fillText('BEST SCORE: ' + bestScore + '  RANK: ' + getRank(bestScore), canvasW / 2, canvasH / 2 + 85);
         }
 
-        drawTitleRadar(ctx, now, canvasW, canvasH);
         drawScanlines(ctx, canvasW, canvasH);
         drawVignette(ctx, canvasW, canvasH);
     }
 
     // Fixed radar blips — static positions, light up when sweep passes
+    // Soviet anthem opening: Bb(8th) Eb(qtr) Bb(8th) C(8th) D(8th) G(qtr held)
+    // Duration weights: 8th=1, quarter=2, held quarter=2.8. Total = 1+2+1+1+1+2.8 = 9.8
+    // Scale to fill 2π: unit = 2π/9.8 ≈ 0.641 rad
+    var _u = Math.PI * 2 / 9.8;
     var radarBlips = [
-        { a: 0.4,  r: 0.7  },
-        { a: 1.1,  r: 0.45 },
-        { a: 1.8,  r: 0.82 },
-        { a: 2.5,  r: 0.35 },
-        { a: 3.3,  r: 0.6  },
-        { a: 4.0,  r: 0.9  },
-        { a: 4.9,  r: 0.5  },
-        { a: 5.6,  r: 0.72 },
+        { a: 0,                r: 0.50, beeped: false, freq: 233, dur: 0.45 },  // Bb3 (8th)
+        { a: 1 * _u,           r: 0.75, beeped: false, freq: 311, dur: 0.85 },  // Eb4 (quarter)
+        { a: 3 * _u,           r: 0.45, beeped: false, freq: 233, dur: 0.45 },  // Bb3 (8th)
+        { a: 4 * _u,           r: 0.65, beeped: false, freq: 262, dur: 0.45 },  // C4  (8th)
+        { a: 5 * _u,           r: 0.85, beeped: false, freq: 294, dur: 0.45 },  // D4  (8th)
+        { a: 6 * _u,           r: 0.60, beeped: false, freq: 196, dur: 1.1  },  // G3  (quarter, held)
     ];
+    var lastTitleSweepAngle = 0;
 
     function drawTitleRadar(ctx, now, canvasW, canvasH) {
         titleSweepAngle = (now * 0.8) % (Math.PI * 2);
         var cx = canvasW / 2;
-        var cy = canvasH / 2 + 160;
-        var r = 80;
+        var cy = canvasH / 2;
+        var r = 240;
 
         // Grid
-        ctx.strokeStyle = 'rgba(255,40,30,0.12)';
+        ctx.strokeStyle = 'rgba(255,40,30,0.18)';
         ctx.lineWidth = 1;
         ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
-        ctx.beginPath(); ctx.arc(cx, cy, r * 0.5, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, r * 0.66, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(cx, cy, r * 0.33, 0, Math.PI * 2); ctx.stroke();
         ctx.beginPath();
         ctx.moveTo(cx - r, cy); ctx.lineTo(cx + r, cy);
         ctx.moveTo(cx, cy - r); ctx.lineTo(cx, cy + r);
@@ -404,82 +347,221 @@
         ctx.lineWidth = 1.5;
         ctx.stroke();
 
-        // Blips — fixed positions, lit by sweep
-        var BLIP_FADE = 1.5; // seconds to fade after sweep passes
+        // Blips — fixed positions, lit by sweep, beep on first contact
+        var BLIP_FADE = 1.5;
         var TWO_PI = Math.PI * 2;
         for (var i = 0; i < radarBlips.length; i++) {
             var b = radarBlips[i];
-            // How long ago did the sweep pass this blip's angle?
             var angleDiff = ((titleSweepAngle - b.a) % TWO_PI + TWO_PI) % TWO_PI;
-            var timeSinceSweep = angleDiff / (0.8 * TWO_PI) * (TWO_PI / 0.8);
-            // Convert angle difference to time: sweep speed is 0.8 rad/s
-            timeSinceSweep = angleDiff / 0.8;
+            var timeSinceSweep = angleDiff / 0.8;
+
+            // Detect fresh sweep crossing: was behind, now ahead
+            if (timeSinceSweep < 0.15 && !b.beeped) {
+                b.beeped = true;
+                if (b.freq > 0) G.audio.playTitleBlip(b.freq, b.dur || 0.3);
+            }
+            // Reset once sweep has moved well past
+            if (timeSinceSweep > 1.0) {
+                b.beeped = false;
+            }
+
             var alpha = timeSinceSweep < BLIP_FADE ? 0.6 * (1 - timeSinceSweep / BLIP_FADE) : 0;
             if (alpha > 0.01) {
                 var bx = cx + Math.cos(b.a) * r * b.r;
                 var by = cy + Math.sin(b.a) * r * b.r;
                 ctx.fillStyle = 'rgba(255,40,30,' + alpha + ')';
                 ctx.beginPath();
-                ctx.arc(bx, by, 2, 0, Math.PI * 2);
+                ctx.arc(bx, by, 3, 0, Math.PI * 2);
                 ctx.fill();
             }
         }
     }
 
     // --- Win Screen ---
-    function drawWinScreen(ctx, stateTimer, canvasW, canvasH, lastScore, bestScore, winTime, startTime, pingCount, scoreTimeBonus, scorePingPenalty) {
+    // --- ASCII American flag (drawn in red to match the game's palette) ---
+    // cx,cy = center of flag
+    function drawAsciiFlag(ctx, cx, cy, alpha, t) {
+        var cellW = 18;
+        var cellH = 26;
+        var fontSize = 24;
+        var starRows = 4, starCols = 6;
+        var stripeRows = 7, stripeCols = 18;
+        var unionW = starCols * cellW;
+        var unionH = starRows * cellH;
+        var totalW = stripeCols * cellW;
+        var totalH = stripeRows * cellH;
+
+        ctx.font = 'bold ' + fontSize + 'px monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+
+        var originX = cx - totalW / 2;
+        var originY = cy - totalH / 2;
+
+        // Traveling wave: amplitude grows toward the fly edge (right side),
+        // pole side (left) barely moves. This is how a real flag flutters.
+        function waveY(col, row) {
+            var edgeFactor = col / stripeCols;              // 0 at pole, 1 at fly edge
+            var amp = 1.5 + edgeFactor * edgeFactor * 18;   // quadratic growth up to ~19.5px
+            return Math.sin(t * 2.2 - col * 0.45 + row * 0.08) * amp;
+        }
+        function waveX(col, row) {
+            // Slight horizontal compression at wave crests for 3D feel
+            var edgeFactor = col / stripeCols;
+            var amp = edgeFactor * edgeFactor * 3;
+            return Math.cos(t * 2.2 - col * 0.45) * amp;
+        }
+
+        // Stripes (7 rows, full width)
+        for (var r = 0; r < stripeRows; r++) {
+            var isRed = r % 2 === 0;
+            var stripeColor = isRed
+                ? 'rgba(255, 0, 0, ' + (alpha * 0.95) + ')'
+                : 'rgba(255, 80, 60, ' + (alpha * 0.28) + ')';
+            var glyph = isRed ? '=' : '-';
+            ctx.fillStyle = stripeColor;
+            for (var c = 0; c < stripeCols; c++) {
+                var baseX = originX + c * cellW + waveX(c, r);
+                var baseY = originY + r * cellH + waveY(c, r);
+                ctx.fillText(glyph, baseX, baseY);
+            }
+        }
+
+        // Union (stars) - drawn with the same wave so it flutters with the stripes
+        // Draw the union backdrop as a polygon following the wave
+        ctx.fillStyle = 'rgba(30, 0, 0, ' + (alpha * 0.95) + ')';
+        ctx.beginPath();
+        // Top edge
+        for (var c = 0; c <= starCols; c++) {
+            var x = originX + c * cellW + waveX(c, 0) - 2;
+            var y = originY + waveY(c, 0) - 2;
+            if (c === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        // Right edge down
+        for (var r = 0; r <= starRows; r++) {
+            var x = originX + starCols * cellW + waveX(starCols, r) + 2;
+            var y = originY + r * cellH + waveY(starCols, r);
+            ctx.lineTo(x, y);
+        }
+        // Bottom edge back to pole
+        for (var c = starCols; c >= 0; c--) {
+            var x = originX + c * cellW + waveX(c, starRows) - 2;
+            var y = originY + starRows * cellH + waveY(c, starRows) + 2;
+            ctx.lineTo(x, y);
+        }
+        // Left edge back up (pole side)
+        ctx.closePath();
+        ctx.fill();
+
+        // Union border
+        ctx.strokeStyle = 'rgba(255, 40, 20, ' + (alpha * 0.6) + ')';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        // Stars — each star follows the wave at its cell position
+        ctx.fillStyle = 'rgba(255, 60, 40, ' + (alpha * 0.95) + ')';
+        for (var r = 0; r < starRows; r++) {
+            for (var c = 0; c < starCols; c++) {
+                var sx = originX + c * cellW + waveX(c, r) + 2;
+                var sy = originY + r * cellH + waveY(c, r);
+                ctx.fillText('*', sx, sy);
+            }
+        }
+
+        // Restore default text state
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'center';
+    }
+
+    function drawWinScreen(ctx, stateTimer, canvasW, canvasH, lastScore, bestScore, winTime, startTime, pingCount, scoreTimeBonus, scorePingPenalty, chargesUsed, milesTraveled) {
+        // Dark ocean background
         ctx.fillStyle = '#080c14';
         ctx.fillRect(0, 0, canvasW, canvasH);
 
-        var headerPulse = 0.85 + 0.15 * Math.sin(stateTimer * 2);
-        ctx.fillStyle = 'rgba(0, 255, 100, ' + headerPulse + ')';
-        ctx.font = 'bold 48px monospace';
+        // Faint radial glow behind the modal
+        var glowGrad = ctx.createRadialGradient(canvasW / 2, canvasH / 2, 0, canvasW / 2, canvasH / 2, 400);
+        glowGrad.addColorStop(0, 'rgba(255, 20, 20, 0.12)');
+        glowGrad.addColorStop(1, 'rgba(255, 0, 0, 0)');
+        ctx.fillStyle = glowGrad;
+        ctx.fillRect(0, 0, canvasW, canvasH);
+
+        // --- Modal panel ---
+        var modalW = 620;
+        var modalH = 570;
+        var modalX = canvasW / 2 - modalW / 2;
+        var modalY = canvasH / 2 - modalH / 2;
+
+        // Panel backdrop (slightly darker than bg, red-tinted)
+        ctx.fillStyle = 'rgba(15, 5, 8, 0.85)';
+        ctx.fillRect(modalX, modalY, modalW, modalH);
+
+        // Panel border with double stroke (glow + core)
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.25)';
+        ctx.lineWidth = 6;
+        ctx.strokeRect(modalX, modalY, modalW, modalH);
+        ctx.strokeStyle = 'rgba(255, 0, 0, 0.9)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(modalX, modalY, modalW, modalH);
+
+        // Corner brackets (80s terminal aesthetic)
+        var bracketLen = 18;
+        ctx.strokeStyle = 'rgba(255, 80, 60, 0.9)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        // TL
+        ctx.moveTo(modalX - 6, modalY + bracketLen); ctx.lineTo(modalX - 6, modalY - 6); ctx.lineTo(modalX + bracketLen, modalY - 6);
+        // TR
+        ctx.moveTo(modalX + modalW - bracketLen, modalY - 6); ctx.lineTo(modalX + modalW + 6, modalY - 6); ctx.lineTo(modalX + modalW + 6, modalY + bracketLen);
+        // BL
+        ctx.moveTo(modalX - 6, modalY + modalH - bracketLen); ctx.lineTo(modalX - 6, modalY + modalH + 6); ctx.lineTo(modalX + bracketLen, modalY + modalH + 6);
+        // BR
+        ctx.moveTo(modalX + modalW - bracketLen, modalY + modalH + 6); ctx.lineTo(modalX + modalW + 6, modalY + modalH + 6); ctx.lineTo(modalX + modalW + 6, modalY + modalH - bracketLen);
+        ctx.stroke();
+
         ctx.textAlign = 'center';
-        ctx.fillText('WELCOME TO AMERICA', canvasW / 2, canvasH / 2 - 120);
 
-        ctx.fillStyle = 'rgba(0, 200, 80, 0.4)';
-        ctx.font = '14px monospace';
-        ctx.fillText('MISSION COMPLETE', canvasW / 2, canvasH / 2 - 90);
+        // --- Flag (centered horizontally, positioned in upper portion of modal) ---
+        // Flag total dimensions: 18*18 = 324w, 7*26 = 182h
+        var flagCx = canvasW / 2;
+        var flagCy = modalY + 40 + 91; // 40 top padding + half of flag height (182/2)
+        drawAsciiFlag(ctx, flagCx, flagCy, 1.0, stateTimer);
 
-        var elapsed = winTime - startTime;
-        ctx.font = '16px monospace';
-        ctx.fillStyle = '#33aa55';
-        var statsY = canvasH / 2 - 50;
-
-        ctx.fillText('TIME: ' + formatTime(elapsed), canvasW / 2, statsY);
-        ctx.fillText('SONAR PINGS: ' + pingCount, canvasW / 2, statsY + 24);
-
-        ctx.fillStyle = 'rgba(100,200,100,0.5)';
-        ctx.font = '14px monospace';
-        ctx.fillText('TIME BONUS: +' + scoreTimeBonus, canvasW / 2, statsY + 52);
-        ctx.fillStyle = 'rgba(255,100,80,0.5)';
-        ctx.fillText('PING PENALTY: -' + scorePingPenalty, canvasW / 2, statsY + 72);
-
-        var rank = getRank(lastScore);
-        var rankColor = getRankColor(rank);
-        ctx.fillStyle = '#ffcc00';
-        ctx.font = 'bold 24px monospace';
-        ctx.fillText('SCORE: ' + lastScore, canvasW / 2, statsY + 108);
-
-        ctx.fillStyle = rankColor;
+        // --- Header (below flag) ---
+        var headerY = modalY + 295;
+        var headerPulse = 0.85 + 0.15 * Math.sin(stateTimer * 2);
+        ctx.fillStyle = 'rgba(255, 30, 20, ' + headerPulse + ')';
         ctx.font = 'bold 36px monospace';
-        ctx.fillText('RANK: ' + rank, canvasW / 2, statsY + 148);
+        ctx.fillText('WELCOME TO AMERICA', canvasW / 2, headerY);
 
-        if (lastScore >= bestScore) {
-            var glow = 0.6 + 0.4 * Math.sin(stateTimer * 6);
-            ctx.fillStyle = 'rgba(255,220,0,' + glow + ')';
-            ctx.font = 'bold 18px monospace';
-            ctx.fillText('--- NEW HIGH SCORE ---', canvasW / 2, statsY + 178);
-        } else {
-            ctx.fillStyle = 'rgba(255,180,0,0.5)';
-            ctx.font = '15px monospace';
-            ctx.fillText('BEST: ' + bestScore, canvasW / 2, statsY + 178);
+        // --- Stats list ---
+        var elapsed = winTime - startTime;
+        var statsY = headerY + 55;
+        var lineH = 28;
+        var labelX = canvasW / 2 - 140;
+        var valueX = canvasW / 2 + 140;
+
+        ctx.font = '16px monospace';
+
+        function drawStat(label, value, y) {
+            ctx.fillStyle = 'rgba(255, 80, 60, 0.55)';
+            ctx.textAlign = 'left';
+            ctx.fillText(label, labelX, y);
+            ctx.fillStyle = 'rgba(255, 50, 30, 0.95)';
+            ctx.textAlign = 'right';
+            ctx.fillText(value, valueX, y);
         }
 
+        drawStat('TIME',            formatTime(elapsed),                 statsY);
+        drawStat('DISTANCE',        (milesTraveled != null ? milesTraveled : '?') + ' MILES', statsY + lineH);
+        drawStat('PINGS',            String(pingCount),                   statsY + lineH * 2);
+        drawStat('TORPEDOES',       (chargesUsed != null ? chargesUsed : 0) + ' / ' + G.MAX_TORPEDOES, statsY + lineH * 3);
+
+        // --- Continue prompt (below modal) ---
+        ctx.textAlign = 'center';
         if (stateTimer > 1.5) {
-            ctx.fillStyle = 'rgba(0, 255, 100, ' + (0.5 + 0.5 * Math.sin(stateTimer * 3)) + ')';
-            ctx.font = '20px monospace';
-            ctx.fillText('PRESS ENTER TO CONTINUE', canvasW / 2, statsY + 220);
+            ctx.fillStyle = 'rgba(255, 80, 60, 0.6)';
+            ctx.font = '16px monospace';
+            ctx.fillText('PRESS ENTER TO CONTINUE', canvasW / 2, modalY + modalH + 40);
         }
 
         drawScanlines(ctx, canvasW, canvasH);
@@ -526,11 +608,10 @@
 
         var totalDist = G.SPAWN_Y - G.DOCK_Y;
         var traveled = Math.max(0, totalDist - (player.y - G.DOCK_Y));
-        var totalMiles = Math.round(totalDist / 100);
         var traveledMiles = Math.round(traveled / 100);
         ctx.fillStyle = 'rgba(255,80,60,0.6)';
         ctx.font = '18px monospace';
-        ctx.fillText(traveledMiles + ' / ' + totalMiles + ' MILES', canvasW / 2, canvasH * 0.18 + 35);
+        ctx.fillText(traveledMiles + ' MILES TRAVELED', canvasW / 2, canvasH * 0.18 + 35);
 
         ctx.fillStyle = 'rgba(255,80,60,0.4)';
         ctx.font = '14px monospace';
@@ -541,8 +622,8 @@
         // Bottom section: tip + retry (below the killer object in the center)
         var tip = getDeathTip(deathCause);
         if (tip) {
-            ctx.fillStyle = 'rgba(255,180,100,0.45)';
-            ctx.font = '13px monospace';
+            ctx.fillStyle = 'rgba(255,180,100,0.5)';
+            ctx.font = '18px monospace';
             ctx.fillText(tip, canvasW / 2, canvasH * 0.75);
         }
 
@@ -550,11 +631,15 @@
             ctx.font = '20px monospace';
             ctx.fillStyle = 'rgba(255, 80, 60, ' + (0.5 + 0.5 * Math.sin(stateTimer * 4)) + ')';
             ctx.fillText('PRESS ENTER TO RETRY', canvasW / 2, canvasH * 0.82);
+
+            ctx.font = '16px monospace';
+            ctx.fillStyle = 'rgba(255, 80, 60, 0.4)';
+            ctx.fillText('ESC TO RETURN HOME', canvasW / 2, canvasH * 0.82 + 28);
         }
     }
 
     // --- HUD ---
-    function drawHUD(ctx, now, stateTimer, canvasW, canvasH, player, speed, silentRunning, pingCount, depthCharges, currentZone, tutorialPhase) {
+    function drawHUD(ctx, now, stateTimer, canvasW, canvasH, player, speed, silentRunning, pingCount, torpedoes, currentZone, tutorialPhase) {
         var distRemaining = Math.max(0, player.y - G.DOCK_Y);
         var progress = 1 - distRemaining / (G.SPAWN_Y - G.DOCK_Y);
 
@@ -576,8 +661,8 @@
         var speedPct = Math.abs(speed) / G.MAX_SPEED;
         ctx.fillText('SPD: ' + Math.round(speedPct * 100) + '%', canvasW - 20, 50);
 
-        ctx.fillStyle = depthCharges > 0 ? 'rgba(255,140,40,0.5)' : 'rgba(100,40,30,0.3)';
-        ctx.fillText('CHARGES: ' + depthCharges, canvasW - 20, 70);
+        ctx.fillStyle = torpedoes > 0 ? 'rgba(255,140,40,0.5)' : 'rgba(100,40,30,0.3)';
+        ctx.fillText('TORPEDOES: ' + torpedoes, canvasW - 20, 70);
 
         if (silentRunning) {
             var silentPulse = 0.5 + 0.3 * Math.sin(now * 6);
@@ -601,7 +686,7 @@
             ctx.fillStyle = 'rgba(200, 40, 30, ' + Math.max(0, alpha) + ')';
             ctx.font = '13px monospace';
             ctx.textAlign = 'center';
-            ctx.fillText('[ WASD ] MOVE   [ SPACE ] PING   [ SHIFT ] SILENT   [ E ] CHARGE   [ P ] PAUSE', canvasW / 2, canvasH - 25);
+            ctx.fillText('[ WASD ] MOVE   [ SPACE ] PING   [ SHIFT ] SILENT   [ F ] TORPEDO   [ P ] PAUSE', canvasW / 2, canvasH - 25);
         }
     }
 
@@ -614,21 +699,12 @@
         return 'D';
     }
 
-    function getRankColor(rank) {
-        switch (rank) {
-            case 'S': return '#ffd700';
-            case 'A': return '#00ff66';
-            case 'B': return '#33aaff';
-            case 'C': return '#ff8844';
-            default: return '#ff4444';
-        }
-    }
-
     function getDeathTip(cause) {
         switch (cause) {
             case 'mine': return 'USE SONAR TO DETECT MINES AHEAD';
-            case 'shark': return 'SHARKS DRIFT RANDOMLY - KEEP YOUR DISTANCE';
+            case 'shark': return 'SHARKS GO WHERE THEY PLEASE - KEEP YOUR DISTANCE';
             case 'submarine': return 'ENEMY SUBS LISTEN FOR YOUR ENGINES - USE SILENT RUNNING';
+            case 'wall': return 'USE SONAR TO SEE THE CANYON WALLS';
             default: return '';
         }
     }
@@ -642,12 +718,10 @@
         drawParticles: drawParticles,
         updateWake: updateWake,
         drawWake: drawWake,
-        drawThreatIndicators: drawThreatIndicators,
         drawBlastEffects: drawBlastEffects,
-        drawActiveCharges: drawActiveCharges,
+        drawActiveTorpedoes: drawActiveTorpedoes,
         drawZoneNotification: drawZoneNotification,
         drawMinimap: drawMinimap,
-        drawCloseCallFlash: drawCloseCallFlash,
         drawTitleScreen: drawTitleScreen,
         drawWinScreen: drawWinScreen,
         drawDeathScreen: drawDeathScreen,

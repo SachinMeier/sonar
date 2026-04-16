@@ -10,7 +10,7 @@
 //   4. Shark warning (icon + sentence)  — ~2600px, hold 4s
 //   5. Sub warning (icon + sentence)    — ~3800px, hold 4s
 //   6. Silent running (Shift)           — ~4200px or enemy alert
-//   7. Depth charges (E)                — ~5000px
+//   7. Torpedoes (E)                    — ~5000px
 
 (function () {
     var G = window.G;
@@ -23,19 +23,15 @@
         phaseTimer: 0,
     };
 
-    function resetTutorial(hasPlayedBefore) {
-        if (hasPlayedBefore) {
-            G.tutorial.phase = -1;
-        } else {
-            G.tutorial.phase = 1;
-            G.tutorial.promptAlpha = 0;
-            G.tutorial.hasTurned = false;
-            G.tutorial.startY = G.SPAWN_Y;
-            G.tutorial.phaseTimer = 0;
-        }
+    function resetTutorial() {
+        G.tutorial.phase = 1;
+        G.tutorial.promptAlpha = 0;
+        G.tutorial.hasTurned = false;
+        G.tutorial.startY = G.SPAWN_Y;
+        G.tutorial.phaseTimer = 0;
     }
 
-    function updateTutorial(dt, keys, player, depthCharges) {
+    function updateTutorial(dt, keys, player, torpedoes) {
         var tut = G.tutorial;
         if (tut.phase < 1) return;
 
@@ -46,7 +42,7 @@
         if (tut.phase === 1) {
             // Movement
             tut.promptAlpha = Math.min(1, tut.promptAlpha + dt * 2);
-            if (dist > 500 && tut.hasTurned) {
+            if (dist > 100) {
                 tut.phase = 2;
                 tut.promptAlpha = 0;
             }
@@ -61,8 +57,8 @@
             }
 
         } else if (tut.phase === 3) {
-            // Mine warning — appears near 1000px, holds 4s
-            if (dist > 1000) {
+            // Mine warning — appears near 600px, holds 4s
+            if (dist > 600) {
                 tut.promptAlpha = Math.min(1, tut.promptAlpha + dt * 2);
                 tut.phaseTimer += dt;
             }
@@ -73,8 +69,8 @@
             }
 
         } else if (tut.phase === 4) {
-            // Shark warning — appears near 2600px, holds 4s
-            if (dist > 2600) {
+            // Shark warning — appears near 2000px, holds 4s
+            if (dist > 2000) {
                 tut.promptAlpha = Math.min(1, tut.promptAlpha + dt * 2);
                 tut.phaseTimer += dt;
             }
@@ -85,8 +81,8 @@
             }
 
         } else if (tut.phase === 5) {
-            // Enemy sub warning — appears near 3800px, holds 4s
-            if (dist > 3800) {
+            // Enemy sub warning — appears near 3200px, holds 4s
+            if (dist > 3200) {
                 tut.promptAlpha = Math.min(1, tut.promptAlpha + dt * 2);
                 tut.phaseTimer += dt;
             }
@@ -106,18 +102,18 @@
                     break;
                 }
             }
-            if (anyAlerted || dist > 4500) {
+            if (anyAlerted || dist > 3800) {
                 tut.promptAlpha = Math.min(1, tut.promptAlpha + dt * 2);
             }
-            if (dist > 5200) {
+            if (dist > 4400) {
                 tut.phase = 7;
                 tut.promptAlpha = 0;
             }
 
         } else if (tut.phase === 7) {
-            // Depth charges
+            // Torpedoes — shortly after silent running
             tut.promptAlpha = Math.min(1, tut.promptAlpha + dt * 2);
-            if (dist > 6000 || depthCharges < G.MAX_DEPTH_CHARGES) {
+            if (dist > 5000 || torpedoes < G.MAX_TORPEDOES) {
                 tut.phase = -1;
                 tut.promptAlpha = 0;
             }
@@ -167,15 +163,26 @@
     // --- Rendering ---
 
     function drawIconAndText(ctx, icon, text, canvasW, promptY, alpha) {
-        var iconX = canvasW / 2 - 14;
-        icon(ctx, iconX - 8, promptY - 4, alpha * 0.8);
-        ctx.fillStyle = 'rgba(255, 60, 40, ' + (alpha * 0.65) + ')';
+        // Measure text so we can center the icon+text block as a unit
         ctx.font = '16px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(text, canvasW / 2 + 8, promptY);
+        var textWidth = ctx.measureText(text).width;
+        var iconWidth = 18;   // visual width of icons
+        var gap = 14;          // space between icon and text
+        var totalWidth = iconWidth + gap + textWidth;
+        var startX = canvasW / 2 - totalWidth / 2;
+
+        var iconCx = startX + iconWidth / 2;
+        var textStartX = startX + iconWidth + gap;
+
+        icon(ctx, iconCx, promptY - 5, alpha * 0.8);
+        ctx.fillStyle = 'rgba(255, 60, 40, ' + (alpha * 0.65) + ')';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillText(text, textStartX, promptY);
+        ctx.textAlign = 'center'; // restore for other draws
     }
 
-    function drawTutorialPrompts(ctx, now, canvasW, canvasH, depthCharges) {
+    function drawTutorialPrompts(ctx, now, canvasW, canvasH, torpedoes) {
         var tut = G.tutorial;
         if (tut.phase < 1 || tut.promptAlpha < 0.01) return;
 
@@ -202,7 +209,7 @@
             drawIconAndText(ctx, drawMineIcon, 'MINES - DEADLY ON CONTACT', canvasW, promptY, ta);
 
         } else if (tut.phase === 4) {
-            drawIconAndText(ctx, drawSharkIcon, 'SHARKS - THEY DRIFT RANDOMLY', canvasW, promptY, ta);
+            drawIconAndText(ctx, drawSharkIcon, 'SHARKS - THEY BITE', canvasW, promptY, ta);
 
         } else if (tut.phase === 5) {
             drawIconAndText(ctx, drawSubIcon, 'ENEMY SUBS HEAR YOUR PINGS', canvasW, promptY, ta);
@@ -210,15 +217,18 @@
         } else if (tut.phase === 6) {
             ctx.fillStyle = 'rgba(255, 60, 40, ' + (ta * 0.7) + ')';
             ctx.font = '20px monospace';
-            ctx.fillText('SHIFT - SILENT RUNNING', canvasW / 2, promptY);
+            ctx.fillText('HOLD SHIFT - RUN SILENTLY', canvasW / 2, promptY);
+            ctx.fillStyle = 'rgba(255, 140, 80, ' + (ta * 0.4) + ')';
+            ctx.font = '14px monospace';
+            ctx.fillText('SLOWER MOVEMENT - ENEMIES LOSE TRACK OF YOU', canvasW / 2, promptY + 26);
 
         } else if (tut.phase === 7) {
             ctx.fillStyle = 'rgba(255, 60, 40, ' + (ta * 0.7) + ')';
             ctx.font = '20px monospace';
-            ctx.fillText('E - DEPTH CHARGE', canvasW / 2, promptY);
+            ctx.fillText('F - FIRE TORPEDO', canvasW / 2, promptY);
             ctx.fillStyle = 'rgba(255, 140, 80, ' + (ta * 0.4) + ')';
             ctx.font = '14px monospace';
-            ctx.fillText('(' + depthCharges + ' REMAINING)', canvasW / 2, promptY + 28);
+            ctx.fillText(torpedoes + ' AVAILABLE - USE THEM WISELY', canvasW / 2, promptY + 26);
         }
     }
 

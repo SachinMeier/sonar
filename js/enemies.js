@@ -144,6 +144,5 @@
         onPlayerPing: onPlayerPing,
         updateShark: updateShark,
         updateEnemySub: updateEnemySub,
-        bounceOffWalls: bounceOffWalls,
     };
 })();

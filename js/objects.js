@@ -5,12 +5,14 @@
 
     G.objects = [];
     G.objectSegs = [];
+    G.mineSegs = [];
 
     function generateObjects() {
         G.objects = [];
         var SLOT_H = 300;
 
-        var seed = 137;
+        // Fresh seed every run — different object placement every time
+        var seed = (Math.floor(Math.random() * 0x7fffffff)) | 1;
         function rand() {
             seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
             return seed / 0x7fffffff;
@@ -94,17 +96,12 @@
         var zone2Top = G.zoneYBoundary(0.50);
         var zone3Top = G.zoneYBoundary(0.75);
 
-        // === ZONE 1: OPEN WATERS (tutorial spacing) ===
-        // Mines first: player learns what circles are
+        // === ZONE 1: OPEN WATERS (tutorial pacing) ===
         placeMine(G.SPAWN_Y - 1200, 60);
         placeMine(G.SPAWN_Y - 1800, 80);
         placeMine(G.SPAWN_Y - 2200, 100);
-
-        // Sharks second: player learns what arrowheads are
         placeShark(G.SPAWN_Y - 3000, 200);
-        placeMine(G.SPAWN_Y - 3200, 120); // mix in a mine too
-
-        // Enemy sub last: player learns the real threat
+        placeMine(G.SPAWN_Y - 3200, 120);
         placeEnemySub(G.SPAWN_Y - 4200, 100);
         placeMineCluster(G.SPAWN_Y - 4800, 3);
         if (rand() < 0.5) {
@@ -130,9 +127,8 @@
                 placeMineCluster(slotY, 2 + Math.floor(rand() * 2));
             }
         }
-        // Enemy subs in the back half only
-        placeEnemySub(zone1Top - z2Span * 0.55, 300);
-        placeEnemySub(zone1Top - z2Span * 0.8, 250);
+        // Enemy sub in the back half only
+        placeEnemySub(zone1Top - z2Span * 0.7, 300);
         // One shark mid-zone
         placeShark(zone1Top - z2Span * 0.4, 400);
         placeShark(zone1Top - z2Span * 0.75, 350);
@@ -152,10 +148,9 @@
                 if (rand() < 0.3) placeMine(slotY + 100, 150);
             }
         }
-        // Enemy subs spread through zone, more toward the end
-        placeEnemySub(zone2Top - z3Span * 0.2, 200);
-        placeEnemySub(zone2Top - z3Span * 0.5, 200);
-        placeEnemySub(zone2Top - z3Span * 0.75, 200);
+        // Enemy subs spread through zone
+        placeEnemySub(zone2Top - z3Span * 0.35, 200);
+        placeEnemySub(zone2Top - z3Span * 0.7, 200);
         if (rand() < 0.5) {
             placeEnemySub(zone2Top - z3Span * 0.9, 180);
         }
@@ -184,51 +179,77 @@
         }
     }
 
-    function rebuildObjectSegs() {
-        G.objectSegs = [];
+    function buildMineSegs() {
+        G.mineSegs = [];
         for (var i = 0; i < G.objects.length; i++) {
             var obj = G.objects[i];
-            if (!obj.alive) continue;
+            if (!obj.alive || obj.type !== G.OBJ_TYPE.MINE) continue;
             var verts = G.shapes.transformVerts(obj.shape, obj.x, obj.y, obj.rot);
             var segs = G.shapes.toSegments(verts);
             for (var j = 0; j < segs.length; j++) {
-                G.objectSegs.push(segs[j]);
+                segs[j]._objIdx = i;
+                G.mineSegs.push(segs[j]);
             }
         }
+    }
+
+    function rebuildDynamicSegs() {
+        var dynamicSegs = [];
+        for (var i = 0; i < G.objects.length; i++) {
+            var obj = G.objects[i];
+            if (!obj.alive || obj.type === G.OBJ_TYPE.MINE) continue;
+            var verts = G.shapes.transformVerts(obj.shape, obj.x, obj.y, obj.rot);
+            var segs = G.shapes.toSegments(verts);
+            for (var j = 0; j < segs.length; j++) {
+                segs[j]._objIdx = i;
+                dynamicSegs.push(segs[j]);
+            }
+        }
+        G.objectSegs = G.mineSegs.concat(dynamicSegs);
+    }
+
+    function rebuildObjectSegs() {
+        buildMineSegs();
+        rebuildDynamicSegs();
     }
 
     function checkCollisions(player, spawnSafeTimer) {
         if (spawnSafeTimer > 0) return null;
-        for (var i = 0; i < G.objects.length; i++) {
-            var obj = G.objects[i];
-            if (!obj.alive) continue;
-            var dx = player.x - obj.x, dy = player.y - obj.y;
-            var dist = Math.sqrt(dx * dx + dy * dy);
-            var minDist = G.COLLISION_RADII.player +
-                (obj.type === G.OBJ_TYPE.MINE ? G.COLLISION_RADII.mine :
-                 obj.type === G.OBJ_TYPE.SHARK ? G.COLLISION_RADII.shark :
-                 G.COLLISION_RADII.enemySub);
-            if (dist < minDist) return obj;
-        }
-        return null;
-    }
 
-    function checkCloseCalls(now, player, lastCloseCallTime) {
+        // 5-point collision hull matching the sub's roundedRect(60, 24, 10)
+        var cosR = Math.cos(player.rot);
+        var sinR = Math.sin(player.rot);
+        // Perpendicular (left = port, right = starboard)
+        var perpX = -sinR;
+        var perpY = cosR;
+
+        // Points: [offsetX along heading, offsetY perpendicular, radius]
+        var points = [
+            [0,   0,  12],  // Center — full body width
+            [28,  0,  6],   // Nose — tapered tip
+            [-28, 0,  6],   // Tail — tapered tip
+            [10,  12, 4],   // Port shoulder — left side, slightly forward
+            [10, -12, 4],   // Starboard shoulder — right side, slightly forward
+        ];
+
         for (var i = 0; i < G.objects.length; i++) {
             var obj = G.objects[i];
             if (!obj.alive) continue;
-            var dx = player.x - obj.x, dy = player.y - obj.y;
-            var dist = Math.sqrt(dx * dx + dy * dy);
-            var minDist = G.COLLISION_RADII.player +
+            var objRadius = obj.collisionRadius ||
                 (obj.type === G.OBJ_TYPE.MINE ? G.COLLISION_RADII.mine :
                  obj.type === G.OBJ_TYPE.SHARK ? G.COLLISION_RADII.shark :
                  G.COLLISION_RADII.enemySub);
-            var closeCallDist = minDist * G.CLOSE_CALL_MULT;
-            if (dist > minDist && dist < closeCallDist) {
-                return true;
+
+            for (var p = 0; p < points.length; p++) {
+                var pt = points[p];
+                var px = player.x + cosR * pt[0] + perpX * pt[1];
+                var py = player.y + sinR * pt[0] + perpY * pt[1];
+                var dx = px - obj.x, dy = py - obj.y;
+                var minDist = pt[2] + objRadius;
+                if (dx * dx + dy * dy < minDist * minDist) return obj;
             }
         }
-        return false;
+        return null;
     }
 
     // Compute nearest threat distance for heartbeat audio
@@ -246,9 +267,10 @@
 
     G.objs = {
         generateObjects: generateObjects,
+        buildMineSegs: buildMineSegs,
+        rebuildDynamicSegs: rebuildDynamicSegs,
         rebuildObjectSegs: rebuildObjectSegs,
         checkCollisions: checkCollisions,
-        checkCloseCalls: checkCloseCalls,
         nearestThreatDist: nearestThreatDist,
     };
 })();

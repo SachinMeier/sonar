@@ -5,9 +5,9 @@
 
     // --- Sonar ---
     G.PULSE_SPEED = 350;
-    G.FADE_DURATION = 4.5;
+    G.FADE_DURATION = 7.0;
     G.NUM_RAYS = 720;
-    G.MAX_RANGE = 1500;
+    G.MAX_RANGE = 1200;
     G.CONNECT_GAP_SQ = 25 * 25;
 
     // --- Movement ---
@@ -61,8 +61,8 @@
     };
 
     // Per-zone enemy sub behavior
-    G.ZONE_ESUB_INTERCEPT_SPEED = [0, 55, 70, 75];
-    G.ZONE_ESUB_LISTEN_DURATION = [0, 6, 10, 12];
+    G.ZONE_ESUB_INTERCEPT_SPEED = [40, 55, 70, 75];
+    G.ZONE_ESUB_LISTEN_DURATION = [4, 6, 10, 12];
 
     // Per-zone shark speed
     G.ZONE_SHARK_SPEED = [15, 25, 35, 25];
@@ -76,13 +76,16 @@
         enemySub: 14,
     };
 
-    G.CLOSE_CALL_MULT = 1.5;
-
-    // --- Depth Charge ---
-    G.MAX_DEPTH_CHARGES = 3;
-    G.DC_FUSE_TIME = 1.0;
-    G.DC_BLAST_RADIUS = 80;
-    G.DC_VISUAL_DURATION = 0.8;
+    // --- Torpedoes ---
+    G.MAX_TORPEDOES = 3;
+    G.TORPEDO_SPEED = 220;       // px/s
+    G.TORPEDO_RANGE = 400;       // max distance before self-destruct
+    G.TORPEDO_BLAST_RADIUS = 80;
+    G.TORPEDO_VISUAL_DURATION = 0.8;
+    G.TORPEDO_RECOIL = 25;       // speed reduction on fire
+    G.TORPEDO_PING_INTERVAL = 0.15; // seconds between mini-pings
+    G.TORPEDO_PING_RANGE = 200;     // mini-ping sonar range
+    G.TORPEDO_PING_RAYS = 120;      // rays per mini-ping (fewer than player's 720)
 
     // --- Game States ---
     G.STATE = { TITLE: 0, PLAYING: 1, DEAD: 2, WIN: 3 };

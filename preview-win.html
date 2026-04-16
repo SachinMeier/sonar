@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonar - Win Screen Preview</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #000; overflow: hidden; font-family: monospace; color: #ff6040; }
+        canvas { display: block; }
+        .controls {
+            position: fixed; top: 10px; left: 10px; z-index: 10;
+            background: rgba(10,5,5,0.85); border: 1px solid rgba(255,0,0,0.5);
+            padding: 10px 14px; font-size: 12px; line-height: 1.6;
+            max-width: 280px;
+        }
+        .controls h3 { font-size: 13px; color: #ff3030; margin-bottom: 6px; }
+        .controls label { display: block; margin: 4px 0; }
+        .controls input[type="number"] { width: 60px; background: #200; color: #ff8060; border: 1px solid #600; padding: 2px 4px; font-family: monospace; }
+        .controls button { background: #300; color: #ff6040; border: 1px solid #800; padding: 4px 8px; margin-top: 6px; cursor: pointer; font-family: monospace; }
+        .controls button:hover { background: #500; }
+    </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="controls">
+    <h3>WIN SCREEN PREVIEW</h3>
+    <label>Time (s): <input type="number" id="time" value="187"></label>
+    <label>Miles: <input type="number" id="miles" value="120"></label>
+    <label>Pings: <input type="number" id="pings" value="42"></label>
+    <label>Charges used: <input type="number" id="charges" value="2" min="0" max="3"></label>
+    <button onclick="updatePreview()">Refresh</button>
+</div>
+
+<script>window.G = {};</script>
+<script src="js/config.js"></script>
+<script src="js/renderer.js"></script>
+<script>
+(function () {
+    var canvas = document.getElementById('c');
+    var ctx = canvas.getContext('2d');
+
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    var params = {
+        time: 187,
+        miles: 120,
+        pings: 42,
+        charges: 2,
+    };
+
+    window.updatePreview = function () {
+        params.time = parseFloat(document.getElementById('time').value) || 0;
+        params.miles = parseInt(document.getElementById('miles').value) || 0;
+        params.pings = parseInt(document.getElementById('pings').value) || 0;
+        params.charges = parseInt(document.getElementById('charges').value) || 0;
+    };
+
+    var t0 = performance.now() / 1000;
+
+    function frame(ts) {
+        var stateTimer = (ts / 1000) - t0;
+
+        G.renderer.drawWinScreen(
+            ctx, stateTimer, canvas.width, canvas.height,
+            0, 0,               // lastScore, bestScore (removed)
+            params.time, 0,     // winTime, startTime
+            params.pings,
+            0, 0,               // scoreTimeBonus, scorePingPenalty (removed)
+            params.charges, params.miles
+        );
+
+        requestAnimationFrame(frame);
+    }
+
+    requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

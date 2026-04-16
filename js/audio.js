@@ -16,6 +16,7 @@
 
     function ensureAudio() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
     }
 
     function initAudio() {
@@ -136,21 +137,6 @@
         osc.stop(t + 0.15);
     }
 
-    function playCloseCallChirp() {
-        if (!audioCtx) return;
-        var t = audioCtx.currentTime;
-        var osc = audioCtx.createOscillator();
-        var gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(900, t);
-        osc.frequency.exponentialRampToValueAtTime(500, t + 0.08);
-        gain.gain.setValueAtTime(0.07, t);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
-        osc.connect(gain).connect(audioCtx.destination);
-        osc.start(t);
-        osc.stop(t + 0.12);
-    }
-
     function playInterceptAlarm() {
         if (!audioCtx) return;
         var t = audioCtx.currentTime;
@@ -169,7 +155,7 @@
         }
     }
 
-    function playDepthChargeBoom() {
+    function playTorpedoBoom() {
         ensureAudio();
         var t = audioCtx.currentTime;
         // Low thud
@@ -198,6 +184,40 @@
         noise.start(t);
     }
 
+    function playTorpedoLaunch() {
+        ensureAudio();
+        var t = audioCtx.currentTime;
+        // Noise burst: short pressurized whoosh
+        var bufSize = Math.floor(audioCtx.sampleRate * 0.08);
+        var buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+        var d = buf.getChannelData(0);
+        for (var i = 0; i < bufSize; i++) d[i] = (Math.random() - 0.5) * 0.6;
+        var noise = audioCtx.createBufferSource();
+        noise.buffer = buf;
+        var noiseBpf = audioCtx.createBiquadFilter();
+        noiseBpf.type = 'bandpass';
+        noiseBpf.frequency.value = 600;
+        noiseBpf.Q.value = 1.0;
+        var noiseGain = audioCtx.createGain();
+        noiseGain.gain.setValueAtTime(0.001, t);
+        noiseGain.gain.linearRampToValueAtTime(0.18, t + 0.01);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+        noise.connect(noiseBpf).connect(noiseGain).connect(audioCtx.destination);
+        noise.start(t);
+        // Low sine sweep: tube launch thump
+        var osc = audioCtx.createOscillator();
+        var oscGain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(300, t);
+        osc.frequency.exponentialRampToValueAtTime(100, t + 0.3);
+        oscGain.gain.setValueAtTime(0.001, t);
+        oscGain.gain.linearRampToValueAtTime(0.12, t + 0.015);
+        oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+        osc.connect(oscGain).connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + 0.35);
+    }
+
     function checkProximityWarning(now, objects, player) {
         if (now - lastProxWarnTime < 3) return;
         for (var i = 0; i < objects.length; i++) {
@@ -215,29 +235,49 @@
     function playDeathSound() {
         ensureAudio();
         var t = audioCtx.currentTime;
+
+        // Kill ambient ocean noise
+        if (ambientGain) ambientGain.gain.setTargetAtTime(0, t, 0.1);
+
+        // Low rumble — longer sustain, slow decay
         var osc = audioCtx.createOscillator();
         var gain = audioCtx.createGain();
         osc.type = 'sawtooth';
         osc.frequency.setValueAtTime(80, t);
-        osc.frequency.exponentialRampToValueAtTime(30, t + 0.8);
+        osc.frequency.exponentialRampToValueAtTime(20, t + 2.0);
         gain.gain.setValueAtTime(0.001, t);
-        gain.gain.linearRampToValueAtTime(0.3, t + 0.005);
-        gain.gain.exponentialRampToValueAtTime(0.001, t + 1.0);
+        gain.gain.linearRampToValueAtTime(0.25, t + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
         osc.connect(gain).connect(audioCtx.destination);
         osc.start(t);
-        osc.stop(t + 1.0);
+        osc.stop(t + 2.5);
 
-        var bufSize = audioCtx.sampleRate * 0.3;
+        // Initial crunch — noise burst
+        var bufSize = Math.floor(audioCtx.sampleRate * 0.6);
         var buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
         var data = buf.getChannelData(0);
         for (var i = 0; i < bufSize; i++) data[i] = (Math.random() - 0.5) * 0.4;
         var noise = audioCtx.createBufferSource();
         noise.buffer = buf;
         var ng = audioCtx.createGain();
-        ng.gain.setValueAtTime(0.25, t);
-        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+        ng.gain.setValueAtTime(0.001, t);
+        ng.gain.linearRampToValueAtTime(0.2, t + 0.005);
+        ng.gain.exponentialRampToValueAtTime(0.001, t + 0.8);
         noise.connect(ng).connect(audioCtx.destination);
         noise.start(t);
+
+        // Secondary groan — delayed, deeper, gives it weight
+        var osc2 = audioCtx.createOscillator();
+        var gain2 = audioCtx.createGain();
+        osc2.type = 'sine';
+        osc2.frequency.setValueAtTime(45, t + 0.3);
+        osc2.frequency.exponentialRampToValueAtTime(18, t + 2.5);
+        gain2.gain.setValueAtTime(0, t);
+        gain2.gain.linearRampToValueAtTime(0.12, t + 0.4);
+        gain2.gain.exponentialRampToValueAtTime(0.001, t + 2.5);
+        osc2.connect(gain2).connect(audioCtx.destination);
+        osc2.start(t + 0.3);
+        osc2.stop(t + 2.5);
     }
 
     function playWinFanfare() {
@@ -260,6 +300,8 @@
 
     function resetProxWarnTime() {
         lastProxWarnTime = 0;
+        // Restore ambient ocean noise (muted on death)
+        if (ambientGain && audioCtx) ambientGain.gain.setTargetAtTime(0.012, audioCtx.currentTime, 0.3);
     }
 
     function suspendAudio() {
@@ -270,20 +312,39 @@
         if (audioCtx) audioCtx.resume();
     }
 
+    // Title screen radar blip — plays Soviet anthem notes with duration
+    function playTitleBlip(freq, dur) {
+        ensureAudio();
+        if (!audioCtx) return;
+        dur = dur || 0.3;
+        var t = audioCtx.currentTime;
+        var osc = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, t);
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.05, t + 0.008);
+        gain.gain.setValueAtTime(0.05, t + dur * 0.6);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(t);
+        osc.stop(t + dur + 0.05);
+    }
+
     G.audio = {
         initAudio: initAudio,
-        ensureAudio: ensureAudio,
         updateEngineAudio: updateEngineAudio,
         updateHeartbeat: updateHeartbeat,
         playPing: playPing,
         playEcho: playEcho,
         playProximityBlip: playProximityBlip,
-        playCloseCallChirp: playCloseCallChirp,
         playInterceptAlarm: playInterceptAlarm,
-        playDepthChargeBoom: playDepthChargeBoom,
+        playTorpedoBoom: playTorpedoBoom,
+        playTorpedoLaunch: playTorpedoLaunch,
         checkProximityWarning: checkProximityWarning,
         playDeathSound: playDeathSound,
         playWinFanfare: playWinFanfare,
+        playTitleBlip: playTitleBlip,
         resetProxWarnTime: resetProxWarnTime,
         suspendAudio: suspendAudio,
         resumeAudio: resumeAudio,

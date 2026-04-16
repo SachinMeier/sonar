@@ -73,8 +73,10 @@
     }
 
     function normalizeAngle(a) {
-        while (a > Math.PI) a -= Math.PI * 2;
-        while (a < -Math.PI) a += Math.PI * 2;
+        if (!isFinite(a)) return 0;
+        a = a % (Math.PI * 2);
+        if (a > Math.PI) a -= Math.PI * 2;
+        if (a < -Math.PI) a += Math.PI * 2;
         return a;
     }
 

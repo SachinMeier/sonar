@@ -26,13 +26,9 @@
     // --- Silent Running ---
     var silentRunning = false;
 
-    // --- Depth Charges ---
-    var depthCharges = G.MAX_DEPTH_CHARGES;
-    var activeCharges = [];
-
-    // --- Close-Call State ---
-    var closeCallTimer = 0;
-    var lastCloseCallTime = 0;
+    // --- Torpedoes ---
+    var torpedoes = G.MAX_TORPEDOES;
+    var activeTorpedoes = [];
 
     // --- Timing ---
     var startTime = 0;
@@ -42,7 +38,8 @@
     // --- Zones & Scoring ---
     var currentZone = '';
     var zoneNotifyTimer = 0;
-    var bestScore = parseInt(localStorage.getItem(G.BEST_KEY) || '0', 10);
+    var bestScore = 0;
+    try { bestScore = parseInt(localStorage.getItem(G.BEST_KEY) || '0', 10); } catch (e) {}
     var lastScore = 0;
     var scoreTimeBonus = 0;
     var scorePingPenalty = 0;
@@ -51,7 +48,8 @@
     var spawnSafeTimer = 0;
 
     // --- Tutorial ---
-    var hasPlayedBefore = localStorage.getItem(G.TUTORIAL_PLAYED_KEY) === '1';
+    var hasPlayedBefore = false;
+    try { hasPlayedBefore = localStorage.getItem(G.TUTORIAL_PLAYED_KEY) === '1'; } catch (e) {}
 
     // --- Screen Shake ---
     var shakeTimer = 0;
@@ -67,7 +65,8 @@
     // --- Initialize canyon on load ---
     G.canyon.generateCanyon();
     G.objs.generateObjects();
-    G.objs.rebuildObjectSegs();
+    G.objs.buildMineSegs();
+    G.objs.rebuildDynamicSegs();
 
     // --- Zone check ---
     function checkZone(dt) {
@@ -85,40 +84,88 @@
         if (zoneNotifyTimer > 0) zoneNotifyTimer -= dt;
     }
 
-    // --- Depth Charge Logic ---
-    function dropDepthCharge() {
-        if (depthCharges <= 0) return;
+    // --- Torpedo Logic ---
+    function fireTorpedo() {
+        if (torpedoes <= 0) return;
         if (gameState !== G.STATE.PLAYING) return;
-        depthCharges--;
-        activeCharges.push({
+        torpedoes--;
+
+        // Recoil: one-time speed reduction
+        speed = Math.max(0, speed - G.TORPEDO_RECOIL);
+
+        activeTorpedoes.push({
             x: player.x,
             y: player.y,
-            fuse: G.DC_FUSE_TIME,
+            rot: player.rot,
+            dist: 0,
+            pingTimer: 0,
         });
+
+        // Torpedo launch is loud — alerts enemy subs like a ping
+        G.enemies.onPlayerPing(player.x, player.y, player.rot, speed);
+
+        G.audio.playTorpedoLaunch();
     }
 
-    function updateDepthCharges(dt, now) {
-        for (var i = activeCharges.length - 1; i >= 0; i--) {
-            var dc = activeCharges[i];
-            dc.fuse -= dt;
-            if (dc.fuse <= 0) {
-                G.audio.playDepthChargeBoom();
-                shakeTimer = 0.3;
-                shakeDuration = 0.3;
-                shakeIntensity = 6;
-                G.blastEffects.push({ x: dc.x, y: dc.y, t: now, duration: G.DC_VISUAL_DURATION });
-                if (G.blastEffects.length > 10) G.blastEffects.shift();
+    function detonateTorpedo(torp, now) {
+        G.audio.playTorpedoBoom();
+        shakeTimer = 0.3;
+        shakeDuration = 0.3;
+        shakeIntensity = 6;
+        G.blastEffects.push({ x: torp.x, y: torp.y, t: now, duration: G.TORPEDO_VISUAL_DURATION });
+        if (G.blastEffects.length > 10) G.blastEffects.shift();
 
-                for (var j = 0; j < G.objects.length; j++) {
-                    var obj = G.objects[j];
-                    if (!obj.alive) continue;
-                    var dx = dc.x - obj.x, dy = dc.y - obj.y;
-                    if (dx * dx + dy * dy < G.DC_BLAST_RADIUS * G.DC_BLAST_RADIUS) {
-                        obj.alive = false;
-                    }
+        for (var j = 0; j < G.objects.length; j++) {
+            var obj = G.objects[j];
+            if (!obj.alive) continue;
+            var dx = torp.x - obj.x, dy = torp.y - obj.y;
+            if (dx * dx + dy * dy < G.TORPEDO_BLAST_RADIUS * G.TORPEDO_BLAST_RADIUS) {
+                obj.alive = false;
+            }
+        }
+        G.objs.buildMineSegs();
+        G.objs.rebuildDynamicSegs();
+    }
+
+    function updateTorpedoes(dt, now, pl, spd) {
+        for (var i = activeTorpedoes.length - 1; i >= 0; i--) {
+            var torp = activeTorpedoes[i];
+            var move = G.TORPEDO_SPEED * dt;
+            torp.x += Math.cos(torp.rot) * move;
+            torp.y += Math.sin(torp.rot) * move;
+            torp.dist += move;
+
+            // Mini-pings: emit sonar pulses as the torpedo travels
+            torp.pingTimer += dt;
+            if (torp.pingTimer >= G.TORPEDO_PING_INTERVAL) {
+                torp.pingTimer -= G.TORPEDO_PING_INTERVAL;
+                // Cast a mini sonar pulse from the torpedo's position
+                G.sonar.castMiniPulse(torp.x, torp.y, now);
+                // Mini-ping alerts enemy subs to the PLAYER's location
+                G.enemies.onPlayerPing(pl.x, pl.y, pl.rot, spd);
+            }
+
+            // Check collision with objects
+            var hit = false;
+            for (var j = 0; j < G.objects.length; j++) {
+                var obj = G.objects[j];
+                if (!obj.alive) continue;
+                var dx = torp.x - obj.x, dy = torp.y - obj.y;
+                var hitDist = obj.type === G.OBJ_TYPE.MINE ? 12 : obj.type === G.OBJ_TYPE.SHARK ? 16 : 18;
+                if (dx * dx + dy * dy < hitDist * hitDist) {
+                    hit = true;
+                    break;
                 }
-                G.objs.rebuildObjectSegs();
-                activeCharges.splice(i, 1);
+            }
+
+            // Check collision with walls
+            if (!hit && !G.canyon.isInsideCanyon(torp.x, torp.y)) {
+                hit = true;
+            }
+
+            if (hit || torp.dist >= G.TORPEDO_RANGE) {
+                detonateTorpedo(torp, now);
+                activeTorpedoes.splice(i, 1);
             }
         }
     }
@@ -134,11 +181,12 @@
         shakeDuration = 0.4;
         shakeIntensity = 8;
         deathObj = killerObj || null;
+        silentRunning = false;
         G.audio.updateEngineAudio(0, true, 0);
         G.audio.updateHeartbeat(0);
         G.audio.playDeathSound();
         hasPlayedBefore = true;
-        localStorage.setItem(G.TUTORIAL_PLAYED_KEY, '1');
+        try { localStorage.setItem(G.TUTORIAL_PLAYED_KEY, '1'); } catch (e) {}
     }
 
     // --- Reset ---
@@ -151,7 +199,8 @@
         G.pulses.length = 0;
         G.canyon.generateCanyon();
         G.objs.generateObjects();
-        G.objs.rebuildObjectSegs();
+        G.objs.buildMineSegs();
+        G.objs.rebuildDynamicSegs();
         gameState = G.STATE.PLAYING;
         stateTimer = 0;
         G.pingCount = 0;
@@ -178,11 +227,9 @@
         G.visitedMinY = G.SPAWN_Y;
         G.visitedMaxY = G.SPAWN_Y;
         silentRunning = false;
-        depthCharges = G.MAX_DEPTH_CHARGES;
-        activeCharges.length = 0;
+        torpedoes = G.MAX_TORPEDOES;
+        activeTorpedoes.length = 0;
         G.blastEffects.length = 0;
-        closeCallTimer = 0;
-        lastCloseCallTime = 0;
         spawnSafeTimer = 3.0;
 
         G.tutorialModule.resetTutorial(hasPlayedBefore);
@@ -196,8 +243,8 @@
             e.preventDefault();
             G.sonar.castPulse(player, gameState, speed, spawnSafeTimer);
         }
-        if (e.code === 'KeyE' && gameState === G.STATE.PLAYING && !paused) {
-            dropDepthCharge();
+        if (e.code === 'KeyF' && gameState === G.STATE.PLAYING && !paused) {
+            fireTorpedo();
         }
         if ((e.code === 'KeyP' || e.code === 'Escape') && gameState === G.STATE.PLAYING) {
             paused = !paused;
@@ -207,6 +254,10 @@
                 G.audio.resumeAudio();
                 lastTime = 0; // Reset to avoid dt spike on unpause
             }
+        }
+        if (e.code === 'Escape' && gameState === G.STATE.DEAD && stateTimer > 1.0) {
+            gameState = G.STATE.TITLE;
+            stateTimer = 0;
         }
         if (e.code === 'Enter') {
             if (gameState === G.STATE.TITLE) {
@@ -260,7 +311,9 @@
         // --- WIN STATE ---
         if (gameState === G.STATE.WIN) {
             updateDocTitle('Sonar - MISSION COMPLETE');
-            G.renderer.drawWinScreen(ctx, stateTimer, canvasW, canvasH, lastScore, bestScore, winTime, startTime, G.pingCount, scoreTimeBonus, scorePingPenalty);
+            var torpedoesUsed = G.MAX_TORPEDOES - torpedoes;
+            var milesTraveled = Math.round((G.SPAWN_Y - G.DOCK_Y) / 100);
+            G.renderer.drawWinScreen(ctx, stateTimer, canvasW, canvasH, lastScore, bestScore, winTime, startTime, G.pingCount, scoreTimeBonus, scorePingPenalty, torpedoesUsed, milesTraveled);
             requestAnimationFrame(frame);
             return;
         }
@@ -273,7 +326,7 @@
         } else if (paused) {
             updateDocTitle('Sonar - PAUSED');
         } else {
-            updateDocTitle('Sonar - ' + (currentZone || 'DIVING'));
+            updateDocTitle('Sonar');
         }
 
         // --- Pause ---
@@ -351,20 +404,19 @@
                 player.y += Math.sin(player.rot) * speed * dt;
             }
 
-            // --- Wall collision (slide along wall, don't brick-stop) ---
-            if (!G.canyon.isInsideCanyon(player.x, player.y)) {
-                var leftX = G.canyon.interpolateWallX(G.leftWall, player.y);
-                var rightX = G.canyon.interpolateWallX(G.rightWall, player.y);
-                var wasLeft = player.x <= leftX + 16;
-                player.x = Math.max(leftX + 16, Math.min(rightX - 16, player.x));
-                // Only kill the lateral component; preserve forward slide along wall
-                var wallNx = wasLeft ? 1 : -1;
-                var dot = Math.cos(player.rot) * wallNx;
-                if (dot < 0) {
-                    // Heading into the wall -- dampen proportional to how head-on
-                    speed *= Math.max(0.4, 1 + dot * 0.6);
-                }
+            // --- Wall collision (death) — check 5-point hull ---
+            var wcCos = Math.cos(player.rot);
+            var wcSin = Math.sin(player.rot);
+            var wcPerpX = -wcSin;
+            var wcPerpY = wcCos;
+            var wallHit = false;
+            var wallPts = [[0,0],[28,0],[-28,0],[10,12],[10,-12]];
+            for (var wp = 0; wp < wallPts.length; wp++) {
+                var wx = player.x + wcCos * wallPts[wp][0] + wcPerpX * wallPts[wp][1];
+                var wy = player.y + wcSin * wallPts[wp][0] + wcPerpY * wallPts[wp][1];
+                if (!G.canyon.isInsideCanyon(wx, wy)) { wallHit = true; break; }
             }
+            if (wallHit) die('wall', null);
             player.y = Math.max(30, Math.min(G.WORLD_H - 30, player.y));
 
             // --- Update AI ---
@@ -374,10 +426,10 @@
                 if (obj.type === G.OBJ_TYPE.SHARK) G.enemies.updateShark(obj, dt);
                 else if (obj.type === G.OBJ_TYPE.ENEMY_SUB) G.enemies.updateEnemySub(obj, dt, player, speed, silentRunning);
             }
-            G.objs.rebuildObjectSegs();
+            G.objs.rebuildDynamicSegs();
 
-            // --- Depth charges ---
-            updateDepthCharges(dt, now);
+            // --- Torpedoes ---
+            updateTorpedoes(dt, now, player, speed);
 
             // --- Object collision (death) ---
             var hit = G.objs.checkCollisions(player, spawnSafeTimer);
@@ -385,19 +437,6 @@
                 var causes = ['mine', 'shark', 'submarine'];
                 die(causes[hit.type], hit);
             }
-
-            // --- Close-call detection ---
-            if (!hit) {
-                if (now - lastCloseCallTime >= 1.5) {
-                    var closeCall = G.objs.checkCloseCalls(now, player, lastCloseCallTime);
-                    if (closeCall) {
-                        closeCallTimer = 0.6;
-                        lastCloseCallTime = now;
-                        G.audio.playCloseCallChirp();
-                    }
-                }
-            }
-            if (closeCallTimer > 0) closeCallTimer -= dt;
 
             // --- Win check ---
             if (player.y < G.DOCK_Y + 40) {
@@ -411,13 +450,13 @@
                 scorePingPenalty = scoreResult.pingPenalty;
                 if (lastScore > bestScore) {
                     bestScore = lastScore;
-                    localStorage.setItem(G.BEST_KEY, String(bestScore));
+                    try { localStorage.setItem(G.BEST_KEY, String(bestScore)); } catch (e) {}
                 }
                 G.audio.updateEngineAudio(0, true, 0);
                 G.audio.updateHeartbeat(0);
                 G.audio.playWinFanfare();
                 hasPlayedBefore = true;
-                localStorage.setItem(G.TUTORIAL_PLAYED_KEY, '1');
+                try { localStorage.setItem(G.TUTORIAL_PLAYED_KEY, '1'); } catch (e) {}
             }
 
             // --- Engine audio ---
@@ -442,7 +481,7 @@
             checkZone(dt);
 
             // --- Tutorial ---
-            G.tutorialModule.updateTutorial(dt, keys, player, depthCharges);
+            G.tutorialModule.updateTutorial(dt, keys, player, torpedoes);
         }
 
         // --- Screen shake ---
@@ -472,20 +511,47 @@
         // --- Background gradient centered on player ---
         var spx = player.x - G.camera.x;
         var spy = player.y - G.camera.y;
-        var depthGrad = ctx.createRadialGradient(spx, spy, 0, spx, spy, 350);
-        depthGrad.addColorStop(0, 'rgba(12, 20, 35, 0.4)');
-        depthGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = depthGrad;
-        ctx.fillRect(0, 0, canvasW, canvasH);
-
         // --- Player submarine ---
         var pVerts = G.shapes.transformVerts(player.shape, player.x, player.y, player.rot);
         var pScreen = [];
         for (var i = 0; i < pVerts.length; i++) {
             pScreen.push(G.renderer.worldToScreen(pVerts[i][0], pVerts[i][1]));
         }
+        // Passive visibility range — faint blue gradient showing visual range in water
+        var visAlpha = silentRunning ? 0.03 : 0.06;
+        var visGrad = ctx.createRadialGradient(spx, spy, 0, spx, spy, 80);
+        visGrad.addColorStop(0, 'rgba(100, 160, 220, ' + (visAlpha * 0.5) + ')');
+        visGrad.addColorStop(0.7, 'rgba(80, 140, 200, ' + (visAlpha * 0.3) + ')');
+        visGrad.addColorStop(1, 'rgba(60, 120, 180, 0)');
+        ctx.beginPath();
+        ctx.arc(spx, spy, 80, 0, Math.PI * 2);
+        ctx.fillStyle = visGrad;
+        ctx.fill();
+
         var subStroke = silentRunning ? 'rgba(255,0,0,0.35)' : '#ff0000';
         G.renderer.drawPoly(ctx, pScreen, '#000', subStroke, 2);
+
+        // Passive short-range visibility — objects within 80px are always visible
+        if (gameState === G.STATE.PLAYING) {
+            var PASSIVE_RANGE = 80;
+            var PASSIVE_RANGE_SQ = PASSIVE_RANGE * PASSIVE_RANGE;
+            for (var oi = 0; oi < G.objects.length; oi++) {
+                var obj = G.objects[oi];
+                if (!obj.alive) continue;
+                var odx = player.x - obj.x, ody = player.y - obj.y;
+                var distSq = odx * odx + ody * ody;
+                if (distSq < PASSIVE_RANGE_SQ) {
+                    var dist = Math.sqrt(distSq);
+                    var nearAlpha = 0.8 * (1 - dist / PASSIVE_RANGE);
+                    var objVerts = G.shapes.transformVerts(obj.shape, obj.x, obj.y, obj.rot);
+                    var objScreen = [];
+                    for (var vi = 0; vi < objVerts.length; vi++) {
+                        objScreen.push(G.renderer.worldToScreen(objVerts[vi][0], objVerts[vi][1]));
+                    }
+                    G.renderer.drawPoly(ctx, objScreen, null, 'rgba(255,0,0,' + nearAlpha + ')', 2);
+                }
+            }
+        }
 
         // Heading indicator: subtle line from sub nose
         if (gameState === G.STATE.PLAYING) {
@@ -543,8 +609,8 @@
         // --- Blast effects ---
         G.renderer.drawBlastEffects(ctx, now, G.camera);
 
-        // --- Active depth charges ---
-        G.renderer.drawActiveCharges(ctx, now, activeCharges, G.camera);
+        // --- Active torpedoes ---
+        G.renderer.drawActiveTorpedoes(ctx, now, activeTorpedoes, G.camera);
 
         // --- Death-reveal + overlay ---
         if (gameState === G.STATE.DEAD) {
@@ -554,17 +620,12 @@
         // Threat direction arrows disabled
 
 
-        // --- Close-call flash ---
-        if (gameState === G.STATE.PLAYING) {
-            G.renderer.drawCloseCallFlash(ctx, closeCallTimer, canvasW, canvasH);
-        }
-
         // --- HUD ---
         if (gameState === G.STATE.PLAYING) {
-            G.renderer.drawHUD(ctx, now, stateTimer, canvasW, canvasH, player, speed, silentRunning, G.pingCount, depthCharges, currentZone, G.tutorial.phase);
-            G.tutorialModule.drawTutorialPrompts(ctx, now, canvasW, canvasH, depthCharges);
+            G.renderer.drawHUD(ctx, now, stateTimer, canvasW, canvasH, player, speed, silentRunning, G.pingCount, torpedoes, currentZone, G.tutorial.phase);
+            G.tutorialModule.drawTutorialPrompts(ctx, now, canvasW, canvasH, torpedoes);
             G.renderer.drawZoneNotification(ctx, canvasW, canvasH, currentZone, zoneNotifyTimer);
-            G.renderer.drawMinimap(ctx, player, canvasW, canvasH);
+            // Minimap removed
         }
 
         // --- Restore screen shake ---

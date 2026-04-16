@@ -17,7 +17,8 @@
         var STEP_Y = 60;
         var steps = Math.ceil(G.WORLD_H / STEP_Y);
 
-        var seed = 42;
+        // Fresh seed every run — different canyon layout every time
+        var seed = (Math.floor(Math.random() * 0x7fffffff)) | 1;
         function rand() {
             seed = (seed * 1664525 + 1013904223) & 0x7fffffff;
             return seed / 0x7fffffff;
@@ -249,7 +250,7 @@
     function isInsideCanyon(x, y) {
         var leftX = interpolateWallX(G.leftWall, y);
         var rightX = interpolateWallX(G.rightWall, y);
-        return x > leftX + 15 && x < rightX - 15;
+        return x > leftX + G.COLLISION_RADII.player && x < rightX - G.COLLISION_RADII.player;
     }
 
     function collectNearbySegs(segs, px, py, range) {
