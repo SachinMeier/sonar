@@ -2,67 +2,50 @@
   <!-- Dark ocean background -->
   <rect width="1200" height="630" fill="#080c14"/>
 
-  <!-- Subtle radial depth gradient -->
+  <!-- Centered sonar radar -->
+  <g transform="translate(600, 315)">
+    <!-- Grid rings (3 concentric, matching home page) -->
+    <circle r="260" fill="none" stroke="#ff3030" stroke-width="1" stroke-opacity="0.18"/>
+    <circle r="173" fill="none" stroke="#ff3030" stroke-width="1" stroke-opacity="0.18"/>
+    <circle r="87"  fill="none" stroke="#ff3030" stroke-width="1" stroke-opacity="0.18"/>
+
+    <!-- Crosshairs -->
+    <line x1="-260" y1="0" x2="260" y2="0" stroke="#ff3030" stroke-width="1" stroke-opacity="0.18"/>
+    <line x1="0" y1="-260" x2="0" y2="260" stroke="#ff3030" stroke-width="1" stroke-opacity="0.18"/>
+
+    <!-- Sweep wedge (frozen at ~2 o'clock) -->
+    <defs>
+      <radialGradient id="sweep" cx="50%" cy="50%" r="50%">
+        <stop offset="0%" stop-color="#ff3030" stop-opacity="0.15"/>
+        <stop offset="100%" stop-color="#ff3030" stop-opacity="0.03"/>
+      </radialGradient>
+    </defs>
+    <path d="M0,0 L245,-90 A260,260 0 0,0 210,-155 Z" fill="url(#sweep)"/>
+
+    <!-- Sweep line -->
+    <line x1="0" y1="0" x2="245" y2="-90" stroke="#ff3030" stroke-width="1.5" stroke-opacity="0.35"/>
+
+    <!-- Radar blips (dots at various positions, some bright, some fading) -->
+    <circle cx="130" cy="-50" r="3" fill="#ff3030" opacity="0.6"/>
+    <circle cx="-95" cy="120" r="3" fill="#ff3030" opacity="0.45"/>
+    <circle cx="200" cy="-130" r="3" fill="#ff3030" opacity="0.55"/>
+    <circle cx="-160" cy="-80" r="3" fill="#ff3030" opacity="0.3"/>
+    <circle cx="50"  cy="180" r="3" fill="#ff3030" opacity="0.2"/>
+    <circle cx="-210" cy="40" r="3" fill="#ff3030" opacity="0.15"/>
+  </g>
+
+  <!-- Title: SONAR (centered) -->
+  <text x="600" y="285" font-family="monospace" font-size="52" font-weight="bold" fill="#ff0000" text-anchor="middle">SONAR</text>
+
+  <!-- Subtitle (centered) -->
+  <text x="600" y="330" font-family="monospace" font-size="18" fill="#ff6040" opacity="0.6" text-anchor="middle">NAVIGATE THE CANYON. REACH THE PORT.</text>
+
+  <!-- Vignette edges -->
   <defs>
-    <radialGradient id="depth" cx="50%" cy="60%" r="50%">
-      <stop offset="0%" stop-color="#0c1220" stop-opacity="0.6"/>
-      <stop offset="100%" stop-color="#000" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="ringGlow" cx="50%" cy="50%" r="50%">
-      <stop offset="60%" stop-color="#ff0000" stop-opacity="0"/>
-      <stop offset="100%" stop-color="#ff0000" stop-opacity="0.08"/>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000" stop-opacity="0.55"/>
     </radialGradient>
   </defs>
-  <rect width="1200" height="630" fill="url(#depth)"/>
-
-  <!-- Sonar rings centered on right side -->
-  <g transform="translate(900, 315)">
-    <circle r="240" fill="url(#ringGlow)"/>
-    <circle r="240" fill="none" stroke="#ff0000" stroke-width="1.5" stroke-opacity="0.25"/>
-    <circle r="160" fill="none" stroke="#ff0000" stroke-width="1.5" stroke-opacity="0.4"/>
-    <circle r="80"  fill="none" stroke="#ff0000" stroke-width="2" stroke-opacity="0.7"/>
-
-    <!-- Player submarine (tiny) -->
-    <rect x="-24" y="-8" width="48" height="16" rx="8" fill="#000" stroke="#ff0000" stroke-width="2" transform="rotate(-30)"/>
-
-    <!-- Sonar hit contours (dots suggesting objects) -->
-    <g fill="#ff0000" opacity="0.9">
-      <circle cx="180" cy="-60" r="2"/>
-      <circle cx="190" cy="-50" r="2"/>
-      <circle cx="195" cy="-40" r="2"/>
-      <circle cx="192" cy="-30" r="2"/>
-      <circle cx="185" cy="-20" r="2"/>
-      <circle cx="-120" cy="80" r="2"/>
-      <circle cx="-130" cy="85" r="2"/>
-      <circle cx="-135" cy="95" r="2"/>
-      <circle cx="-128" cy="105" r="2"/>
-      <circle cx="-120" cy="110" r="2"/>
-      <circle cx="-110" cy="105" r="2"/>
-      <circle cx="60" cy="-180" r="2"/>
-      <circle cx="65" cy="-175" r="2"/>
-      <circle cx="68" cy="-170" r="2"/>
-      <circle cx="65" cy="-165" r="2"/>
-      <circle cx="60" cy="-163" r="2"/>
-      <circle cx="-200" cy="-100" r="2"/>
-      <circle cx="-205" cy="-95" r="2"/>
-      <circle cx="-210" cy="-88" r="2"/>
-    </g>
-  </g>
-
-  <!-- Title -->
-  <text x="80" y="290" font-family="monospace" font-size="120" font-weight="bold" fill="#ff3030" letter-spacing="8">SONAR</text>
-
-  <!-- Subtitle -->
-  <text x="80" y="340" font-family="monospace" font-size="22" fill="#ff6040" opacity="0.75">NAVIGATE THE CANYON. REACH THE PORT.</text>
-
-  <!-- Flavor line -->
-  <text x="80" y="390" font-family="monospace" font-size="16" fill="#cc4020" opacity="0.5" font-style="italic">A sonar-driven stealth game</text>
-
-  <!-- Faint scanline texture -->
-  <g opacity="0.05">
-    <line x1="0" y1="0" x2="1200" y2="0" stroke="#ff3030"/>
-    <line x1="0" y1="4" x2="1200" y2="4" stroke="#ff3030"/>
-    <line x1="0" y1="8" x2="1200" y2="8" stroke="#ff3030"/>
-    <line x1="0" y1="12" x2="1200" y2="12" stroke="#ff3030"/>
-  </g>
+  <rect width="1200" height="630" fill="url(#vignette)"/>
 </svg>
