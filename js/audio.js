@@ -75,6 +75,15 @@
         engineGain.gain.setTargetAtTime(targetVol, t, 0.08);
     }
 
+    // Immediately silence the engine — used on death so the drone cuts out
+    // rather than asymptoting over ~0.5s via setTargetAtTime.
+    function silenceEngine() {
+        if (!engineGain || !audioCtx) return;
+        var t = audioCtx.currentTime;
+        engineGain.gain.cancelScheduledValues(t);
+        engineGain.gain.setValueAtTime(0, t);
+    }
+
     // Update heartbeat: intensity 0-1 based on how close a threat is
     function updateHeartbeat(intensity) {
         if (!heartbeatOsc || !audioCtx) return;
@@ -334,6 +343,7 @@
     G.audio = {
         initAudio: initAudio,
         updateEngineAudio: updateEngineAudio,
+        silenceEngine: silenceEngine,
         updateHeartbeat: updateHeartbeat,
         playPing: playPing,
         playEcho: playEcho,

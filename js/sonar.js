@@ -21,6 +21,10 @@
         // Track which objects get hit (for per-object echo sounds)
         var objectHitDists = {}; // objIndex -> closest distance
 
+        // Hits on moving objects, stored in each object's local frame so the
+        // same contour can be re-illuminated at intervals to show trajectory.
+        var ghostsByObj = {};
+
         for (var i = 0; i < G.NUM_RAYS; i++) {
             var angle = (i / G.NUM_RAYS) * Math.PI * 2;
             var dx = Math.cos(angle), dy = Math.sin(angle);
@@ -46,7 +50,35 @@
             }
 
             if (best < G.MAX_RANGE) {
-                hits.push({ x: ox + dx * best, y: oy + dy * best, d: best });
+                var hx = ox + dx * best;
+                var hy = oy + dy * best;
+                var isMoving = false;
+
+                // Moving-object hit → record in object-local frame for snapshots.
+                // Flag the world-space hit so the main render skips it (the
+                // snapshot system handles its reveal/fade separately).
+                if (bestObjIdx >= 0) {
+                    var hObj = G.objects[bestObjIdx];
+                    if (hObj && hObj.alive && hObj.type !== G.OBJ_TYPE.MINE) {
+                        isMoving = true;
+                        var ghost = ghostsByObj[bestObjIdx];
+                        if (!ghost) {
+                            ghost = { localHits: [], snapshots: [], firstRevealT: 0 };
+                            ghostsByObj[bestObjIdx] = ghost;
+                        }
+                        var rpx = hx - hObj.x;
+                        var rpy = hy - hObj.y;
+                        var rc = Math.cos(hObj.rot);
+                        var rs = Math.sin(hObj.rot);
+                        ghost.localHits.push({
+                            lx: rpx * rc + rpy * rs,
+                            ly: -rpx * rs + rpy * rc,
+                            d: best,
+                        });
+                    }
+                }
+
+                hits.push({ x: hx, y: hy, d: best, movingObj: isMoving });
             }
 
             // Record closest hit per object for echo sounds
@@ -57,7 +89,20 @@
             }
         }
 
-        G.pulses.push({ t0: performance.now() / 1000, hits: hits, ox: ox, oy: oy, _lastEchoR: 0 });
+        // Initialize each ghost's first-reveal time and ping-time snapshot.
+        var _gkeys = Object.keys(ghostsByObj);
+        for (var _gi = 0; _gi < _gkeys.length; _gi++) {
+            var _g = ghostsByObj[_gkeys[_gi]];
+            var _minD = Infinity;
+            for (var _lhi = 0; _lhi < _g.localHits.length; _lhi++) {
+                if (_g.localHits[_lhi].d < _minD) _minD = _g.localHits[_lhi].d;
+            }
+            _g.firstRevealT = _minD / G.PULSE_SPEED;
+            var _o = G.objects[_gkeys[_gi]];
+            _g.snapshots.push({ x: _o.x, y: _o.y, rot: _o.rot, t: _g.firstRevealT });
+        }
+
+        G.pulses.push({ t0: performance.now() / 1000, hits: hits, ox: ox, oy: oy, _lastEchoR: 0, ghostsByObj: ghostsByObj });
         G.audio.playPing();
         G.pingCount++;
 
@@ -203,6 +248,8 @@
                 var h = hits[i];
                 var h2 = hits[(i + 1) % hits.length];
                 if (h.d > ringR || h2.d > ringR) continue;
+                // Moving-object hits render via the snapshot system instead.
+                if (h.movingObj || h2.movingObj) continue;
                 var a1 = 1 - (elapsed - h.d / G.PULSE_SPEED) / pulseFadeDuration;
                 var a2 = 1 - (elapsed - h2.d / G.PULSE_SPEED) / pulseFadeDuration;
                 if (a1 <= 0 || a2 <= 0) continue;
@@ -235,6 +282,95 @@
                 ctx.strokeStyle = 'rgba(255,0,0,' + (alpha * 0.85) + ')';
                 ctx.stroke();
             });
+
+            // --- Trajectory snapshots ---
+            // Re-illuminate the ping's partial contour at 0.5s intervals after
+            // the ring first reveals the object. Oldest snapshot (original
+            // ping) is dim and fades fast; newest is bright and lingers.
+            if (!isMini && pulse.ghostsByObj) {
+                var POSITION_STYLES = [
+                    { fade: 1.5, alphaMul: 0.25 },
+                    { fade: 3.0, alphaMul: 0.50 },
+                    { fade: 5.0, alphaMul: 0.75 },
+                    { fade: 7.0, alphaMul: 1.00 },
+                ];
+                var SNAPSHOT_OFFSETS = [0.5, 1.0, 1.5];
+                var N_OFFSETS = SNAPSHOT_OFFSETS.length;
+
+                var ghostKeys = Object.keys(pulse.ghostsByObj);
+                for (var gk = 0; gk < ghostKeys.length; gk++) {
+                    var oidx = ghostKeys[gk];
+                    var gObj = G.objects[oidx];
+                    var gData = pulse.ghostsByObj[oidx];
+
+                    // Capture due snapshots — only if the object is still alive.
+                    while (gObj && gObj.alive && gData.snapshots.length <= N_OFFSETS) {
+                        var schedIdx = gData.snapshots.length - 1;
+                        if (schedIdx < 0 || schedIdx >= N_OFFSETS) break;
+                        var captureT = gData.firstRevealT + SNAPSHOT_OFFSETS[schedIdx];
+                        if (elapsed < captureT) break;
+                        gData.snapshots.push({
+                            x: gObj.x, y: gObj.y, rot: gObj.rot, t: captureT,
+                        });
+                    }
+
+                    // Render every captured snapshot with its position style.
+                    for (var si = 0; si < gData.snapshots.length; si++) {
+                        var snap = gData.snapshots[si];
+                        var style = POSITION_STYLES[si] || POSITION_STYLES[POSITION_STYLES.length - 1];
+                        var sc = Math.cos(snap.rot);
+                        var ss = Math.sin(snap.rot);
+
+                        _buckets.clear();
+                        for (var lhi = 0; lhi < gData.localHits.length - 1; lhi++) {
+                            var gh = gData.localHits[lhi];
+                            var gh2 = gData.localHits[lhi + 1];
+
+                            // si === 0 reveals per-hit as the ring expands;
+                            // later snapshots reveal all hits at capture time.
+                            var rev1 = si === 0 ? gh.d / G.PULSE_SPEED : snap.t;
+                            var rev2 = si === 0 ? gh2.d / G.PULSE_SPEED : snap.t;
+                            var ga1 = 1 - (elapsed - rev1) / style.fade;
+                            var ga2 = 1 - (elapsed - rev2) / style.fade;
+                            if (ga1 <= 0 || ga2 <= 0) continue;
+                            if (si === 0 && (gh.d > ringR || gh2.d > ringR)) continue;
+
+                            var ldx = gh.lx - gh2.lx, ldy = gh.ly - gh2.ly;
+                            if (ldx * ldx + ldy * ldy > G.CONNECT_GAP_SQ) continue;
+
+                            var wx1 = snap.x + gh.lx * sc - gh.ly * ss;
+                            var wy1 = snap.y + gh.lx * ss + gh.ly * sc;
+                            var wx2 = snap.x + gh2.lx * sc - gh2.ly * ss;
+                            var wy2 = snap.y + gh2.lx * ss + gh2.ly * sc;
+
+                            var gkey = Math.round(Math.min(ga1, ga2) * 8);
+                            if (gkey <= 0) continue;
+                            var garr = _buckets.get(gkey);
+                            if (!garr) { garr = []; _buckets.set(gkey, garr); }
+                            garr.push(
+                                wx1 - camera.x, wy1 - camera.y,
+                                wx2 - camera.x, wy2 - camera.y
+                            );
+                        }
+
+                        var aMul = style.alphaMul;
+                        _buckets.forEach(function(segs, key) {
+                            var alpha = (key / 8) * aMul;
+                            ctx.beginPath();
+                            for (var i = 0; i < segs.length; i += 4) {
+                                ctx.moveTo(segs[i], segs[i + 1]);
+                                ctx.lineTo(segs[i + 2], segs[i + 3]);
+                            }
+                            ctx.lineWidth = 5;
+                            ctx.strokeStyle = 'rgba(255,0,0,' + (alpha * 0.18) + ')';
+                            ctx.stroke();
+                            ctx.lineWidth = 1.5;
+                            ctx.strokeStyle = 'rgba(255,0,0,' + (alpha * 0.85) + ')';
+                            ctx.stroke();
+                        });
+                    }
+                }
+            }
 
             // Prune expired pulse
             var maxDist = 0;

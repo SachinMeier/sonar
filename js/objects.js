@@ -252,6 +252,64 @@
         return null;
     }
 
+    // Prevent objects from overlapping each other. Mines are static and push
+    // movers fully out of overlap; two movers share the push equally. Called
+    // after all AI motion updates, before segments are rebuilt for rendering.
+    function separateObjects() {
+        var objs = G.objects;
+        var MINE = G.OBJ_TYPE.MINE;
+        for (var i = 0; i < objs.length - 1; i++) {
+            var a = objs[i];
+            if (!a.alive) continue;
+            for (var j = i + 1; j < objs.length; j++) {
+                var b = objs[j];
+                if (!b.alive) continue;
+                var aStatic = a.type === MINE;
+                var bStatic = b.type === MINE;
+                if (aStatic && bStatic) continue;
+
+                var dx = a.x - b.x;
+                var dy = a.y - b.y;
+                var minDist = a.collisionRadius + b.collisionRadius;
+                var distSq = dx * dx + dy * dy;
+                if (distSq > minDist * minDist) continue;
+
+                var dist = Math.sqrt(distSq);
+                var nx, ny;
+                if (dist < 0.01) {
+                    // Exactly coincident — pick an arbitrary axis to split
+                    nx = 1; ny = 0; dist = 0;
+                } else {
+                    nx = dx / dist;
+                    ny = dy / dist;
+                }
+                var overlap = minDist - dist;
+
+                if (aStatic) {
+                    b.x -= nx * overlap;
+                    b.y -= ny * overlap;
+                    if (b.wanderAngle !== undefined) {
+                        b.wanderAngle = Math.atan2(-ny, -nx);
+                    }
+                } else if (bStatic) {
+                    a.x += nx * overlap;
+                    a.y += ny * overlap;
+                    if (a.wanderAngle !== undefined) {
+                        a.wanderAngle = Math.atan2(ny, nx);
+                    }
+                } else {
+                    var half = overlap * 0.5;
+                    a.x += nx * half;
+                    a.y += ny * half;
+                    b.x -= nx * half;
+                    b.y -= ny * half;
+                    if (a.wanderAngle !== undefined) a.wanderAngle = Math.atan2(ny, nx);
+                    if (b.wanderAngle !== undefined) b.wanderAngle = Math.atan2(-ny, -nx);
+                }
+            }
+        }
+    }
+
     // Compute nearest threat distance for heartbeat audio
     function nearestThreatDist(player) {
         var best = Infinity;
@@ -271,6 +329,7 @@
         rebuildDynamicSegs: rebuildDynamicSegs,
         rebuildObjectSegs: rebuildObjectSegs,
         checkCollisions: checkCollisions,
+        separateObjects: separateObjects,
         nearestThreatDist: nearestThreatDist,
     };
 })();

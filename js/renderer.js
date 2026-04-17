@@ -178,10 +178,10 @@
         else if (zoneNotifyTimer < 0.5) alpha = zoneNotifyTimer * 2;
         else alpha = 1;
 
-        // POLISH: FREEDOM zone name in green, slightly larger
+        // POLISH: FREEDOM zone name in blue, slightly larger
         var isFreedom = currentZone === 'FREEDOM';
         if (isFreedom) {
-            ctx.fillStyle = 'rgba(0,255,100,' + (alpha * 0.7) + ')';
+            ctx.fillStyle = 'rgba(100,180,255,' + (alpha * 0.7) + ')';
             ctx.font = 'bold 34px monospace';
         } else {
             ctx.fillStyle = 'rgba(255,60,40,' + (alpha * 0.6) + ')';
@@ -639,48 +639,110 @@
     }
 
     // --- HUD ---
+    // Max outstanding non-mini pings (mirrors the cap enforced in sonar.js).
+    var MAX_ACTIVE_PINGS = 10;
+
     function drawHUD(ctx, now, stateTimer, canvasW, canvasH, player, speed, silentRunning, pingCount, torpedoes, currentZone, tutorialPhase) {
-        var distRemaining = Math.max(0, player.y - G.DOCK_Y);
-        var progress = 1 - distRemaining / (G.SPAWN_Y - G.DOCK_Y);
+        // --- Consolidated HUD box, top-right ---
+        var hudW = 180;
+        var hudPad = 10;
+        var lineH = 18;
+        var rowCount = 5;
+        var hudH = 28 + rowCount * lineH + 6;
+        var hudX = canvasW - hudW - 15;
+        var hudY = 15;
 
-        ctx.fillStyle = 'rgba(200, 40, 30, 0.5)';
-        ctx.font = '14px monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText(Math.round(distRemaining / 100) + ' MILES TO PORT', 20, 30);
+        // Backdrop for legibility against the red sonar noise
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.fillRect(hudX, hudY, hudW, hudH);
 
-        var barW = 200, barH = 3;
-        ctx.fillStyle = 'rgba(100, 20, 15, 0.4)';
-        ctx.fillRect(20, 42, barW, barH);
-        ctx.fillStyle = 'rgba(255, 60, 40, 0.7)';
-        ctx.fillRect(20, 42, barW * Math.max(0, Math.min(1, progress)), barH);
+        // Red square outline, no rounding
+        ctx.strokeStyle = 'rgba(255, 50, 35, 0.6)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(hudX + 0.5, hudY + 0.5, hudW, hudH);
 
-        ctx.textAlign = 'right';
-        ctx.fillStyle = 'rgba(200, 40, 30, 0.5)';
-        ctx.fillText('PINGS: ' + pingCount, canvasW - 20, 30);
+        // Header: current zone
+        ctx.fillStyle = 'rgba(255, 80, 55, 0.95)';
+        ctx.font = 'bold 13px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(currentZone || '', hudX + hudW / 2, hudY + 18);
 
-        var speedPct = Math.abs(speed) / G.MAX_SPEED;
-        ctx.fillText('SPD: ' + Math.round(speedPct * 100) + '%', canvasW - 20, 50);
+        // Divider under header
+        ctx.strokeStyle = 'rgba(255, 40, 30, 0.35)';
+        ctx.beginPath();
+        ctx.moveTo(hudX + 8, hudY + 26);
+        ctx.lineTo(hudX + hudW - 8, hudY + 26);
+        ctx.stroke();
 
-        ctx.fillStyle = torpedoes > 0 ? 'rgba(255,140,40,0.5)' : 'rgba(100,40,30,0.3)';
-        ctx.fillText('TORPEDOES: ' + torpedoes, canvasW - 20, 70);
-
-        if (silentRunning) {
-            var silentPulse = 0.5 + 0.3 * Math.sin(now * 6);
-            ctx.fillStyle = 'rgba(100,180,255,' + silentPulse + ')';
-            ctx.font = 'bold 14px monospace';
+        // Rows (label left, value right)
+        ctx.font = '13px monospace';
+        var yStart = hudY + 44;
+        function drawRow(label, value, rowIdx, valueColor) {
+            var ry = yStart + rowIdx * lineH;
+            ctx.fillStyle = 'rgba(255, 80, 55, 0.6)';
             ctx.textAlign = 'left';
-            ctx.fillText('SILENT', 20, 65);
+            ctx.fillText(label, hudX + hudPad, ry);
+            ctx.fillStyle = valueColor || 'rgba(255, 80, 55, 1.0)';
+            ctx.textAlign = 'right';
+            ctx.fillText(value, hudX + hudW - hudPad, ry);
         }
+
+        var distTraveled = Math.max(0, G.SPAWN_Y - player.y);
+        var distMiles = Math.round(distTraveled / 100);
+        drawRow('DIST', distMiles + ' MI', 0);
 
         var headingDeg = (((-player.rot * 180 / Math.PI) + 90) % 360 + 360) % 360;
         var cardinal = ['N','NE','E','SE','S','SW','W','NW'][Math.round(headingDeg / 45) % 8];
-        ctx.textAlign = 'center';
-        ctx.fillStyle = 'rgba(200, 40, 30, 0.5)';
-        ctx.font = '14px monospace';
-        ctx.fillText(cardinal + ' ' + Math.round(headingDeg) + '\u00B0', canvasW / 2, 30);
+        var hdgNum = Math.round(headingDeg);
+        var hdgPad = hdgNum < 10 ? '00' : (hdgNum < 100 ? '0' : '');
+        drawRow('HDG', cardinal + ' ' + hdgPad + hdgNum + '\u00B0', 1);
 
-        ctx.fillText(currentZone, canvasW / 2, 50);
+        var speedPct = Math.round(Math.abs(speed) / G.MAX_SPEED * 100);
+        drawRow('SPD', speedPct + '%', 2);
 
+        // PING row — stacked bars, one per available slot. Bars disappear as
+        // pings are fired and reappear as the pulses expire.
+        var pingRy = yStart + 3 * lineH;
+        ctx.fillStyle = 'rgba(255, 80, 55, 0.6)';
+        ctx.textAlign = 'left';
+        ctx.fillText('PING', hudX + hudPad, pingRy);
+
+        var activePings = 0;
+        for (var pi = 0; pi < G.pulses.length; pi++) {
+            if (!G.pulses[pi].mini) activePings++;
+        }
+        var availablePings = Math.max(0, MAX_ACTIVE_PINGS - activePings);
+
+        var pbW = 4;
+        var pbH = 9;
+        var pbGap = 2;
+        var pbTotalW = MAX_ACTIVE_PINGS * pbW + (MAX_ACTIVE_PINGS - 1) * pbGap;
+        var pbX = hudX + hudW - hudPad - pbTotalW;
+        var pbY = pingRy - pbH + 1;
+        for (var bi = 0; bi < MAX_ACTIVE_PINGS; bi++) {
+            var bx = pbX + bi * (pbW + pbGap);
+            var isAvailable = bi < availablePings;
+            ctx.fillStyle = isAvailable
+                ? 'rgba(255, 80, 55, 1.0)'
+                : 'rgba(255, 80, 55, 0.12)';
+            ctx.fillRect(bx, pbY, pbW, pbH);
+        }
+
+        var torpColor = torpedoes > 0
+            ? 'rgba(255, 140, 40, 1.0)'
+            : 'rgba(160, 60, 50, 0.7)';
+        drawRow('TORP', torpedoes + '/' + G.MAX_TORPEDOES, 4, torpColor);
+
+        // --- Silent running indicator (kept separate, unobtrusive) ---
+        if (silentRunning) {
+            var silentPulse = 0.5 + 0.3 * Math.sin(now * 6);
+            ctx.fillStyle = 'rgba(100, 180, 255, ' + silentPulse + ')';
+            ctx.font = 'bold 14px monospace';
+            ctx.textAlign = 'left';
+            ctx.fillText('SILENT', 20, 30);
+        }
+
+        // Bottom-center control hint on first run
         if (stateTimer < 10 && tutorialPhase < 1) {
             var alpha = stateTimer < 8 ? 0.4 : 0.4 * (1 - (stateTimer - 8) / 2);
             ctx.fillStyle = 'rgba(200, 40, 30, ' + Math.max(0, alpha) + ')';

@@ -182,7 +182,8 @@
         shakeIntensity = 8;
         deathObj = killerObj || null;
         silentRunning = false;
-        G.audio.updateEngineAudio(0, true, 0);
+        speed = 0;
+        G.audio.silenceEngine();
         G.audio.updateHeartbeat(0);
         G.audio.playDeathSound();
         hasPlayedBefore = true;
@@ -435,6 +436,7 @@
                 if (obj.type === G.OBJ_TYPE.SHARK) G.enemies.updateShark(obj, dt);
                 else if (obj.type === G.OBJ_TYPE.ENEMY_SUB) G.enemies.updateEnemySub(obj, dt, player, speed, silentRunning);
             }
+            G.objs.separateObjects();
             G.objs.rebuildDynamicSegs();
 
             // --- Torpedoes ---

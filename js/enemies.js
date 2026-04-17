@@ -3,6 +3,10 @@
 (function () {
     var G = window.G;
 
+    const BOUNCE_WALL_INSET = 50;
+    const BOUNCE_DOCK_Y_OFFSET = 300;
+    const BOUNCE_BOTTOM_INSET = 500;
+
     function onPlayerPing(px, py, prot, pspeed, spawnSafeTimer) {
         for (var i = 0; i < G.objects.length; i++) {
             var obj = G.objects[i];
@@ -122,21 +126,23 @@
     function bounceOffWalls(obj) {
         var lx = G.canyon.interpolateWallX(G.leftWall, obj.y);
         var rx = G.canyon.interpolateWallX(G.rightWall, obj.y);
-        if (obj.x < lx + 50) {
+        var minY = G.DOCK_Y + BOUNCE_DOCK_Y_OFFSET;
+        var maxY = G.WORLD_H - BOUNCE_BOTTOM_INSET;
+        if (obj.x < lx + BOUNCE_WALL_INSET) {
             obj.wanderAngle = 0;
-            obj.x = lx + 50;
+            obj.x = lx + BOUNCE_WALL_INSET;
         }
-        if (obj.x > rx - 50) {
+        if (obj.x > rx - BOUNCE_WALL_INSET) {
             obj.wanderAngle = Math.PI;
-            obj.x = rx - 50;
+            obj.x = rx - BOUNCE_WALL_INSET;
         }
-        if (obj.y < G.DOCK_Y + 300) {
+        if (obj.y < minY) {
             obj.wanderAngle = Math.PI / 2;
-            obj.y = G.DOCK_Y + 300;
+            obj.y = minY;
         }
-        if (obj.y > G.WORLD_H - 500) {
+        if (obj.y > maxY) {
             obj.wanderAngle = -Math.PI / 2;
-            obj.y = G.WORLD_H - 500;
+            obj.y = maxY;
         }
     }
 
