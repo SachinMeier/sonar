@@ -266,7 +266,7 @@
     // --- Title Screen ---
     var titleSweepAngle = 0;
 
-    function drawTitleScreen(ctx, now, stateTimer, canvasW, canvasH, bestScore) {
+    function drawTitleScreen(ctx, now, stateTimer, canvasW, canvasH) {
         // Radar first (behind everything)
         drawTitleRadar(ctx, now, canvasW, canvasH);
 
@@ -283,12 +283,6 @@
         ctx.fillStyle = 'rgba(255, 80, 60, 0.6)';
         ctx.font = '20px monospace';
         ctx.fillText('PRESS ENTER TO BEGIN', canvasW / 2, canvasH / 2 + 50);
-
-        if (bestScore > 0) {
-            ctx.fillStyle = 'rgba(255,180,0,0.5)';
-            ctx.font = '15px monospace';
-            ctx.fillText('BEST SCORE: ' + bestScore + '  RANK: ' + getRank(bestScore), canvasW / 2, canvasH / 2 + 85);
-        }
 
         drawScanlines(ctx, canvasW, canvasH);
         drawVignette(ctx, canvasW, canvasH);
@@ -473,7 +467,7 @@
         ctx.textAlign = 'center';
     }
 
-    function drawWinScreen(ctx, stateTimer, canvasW, canvasH, lastScore, bestScore, winTime, startTime, pingCount, scoreTimeBonus, scorePingPenalty, chargesUsed, milesTraveled) {
+    function drawWinScreen(ctx, stateTimer, canvasW, canvasH, winTime, startTime, pingCount, chargesUsed, milesTraveled) {
         // Dark ocean background
         ctx.fillStyle = '#080c14';
         ctx.fillRect(0, 0, canvasW, canvasH);
@@ -644,42 +638,42 @@
 
     function drawHUD(ctx, now, stateTimer, canvasW, canvasH, player, speed, silentRunning, pingCount, torpedoes, currentZone, tutorialPhase) {
         // --- Consolidated HUD box, top-right ---
-        var hudW = 180;
-        var hudPad = 10;
-        var lineH = 18;
+        var hudW = 220;
+        var hudPad = 12;
+        var lineH = 22;
         var rowCount = 5;
-        var hudH = 28 + rowCount * lineH + 6;
+        var hudH = 32 + rowCount * lineH + 6;
         var hudX = canvasW - hudW - 15;
         var hudY = 15;
 
         // Backdrop for legibility against the red sonar noise
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
         ctx.fillRect(hudX, hudY, hudW, hudH);
 
         // Red square outline, no rounding
-        ctx.strokeStyle = 'rgba(255, 50, 35, 0.6)';
+        ctx.strokeStyle = 'rgba(255, 50, 35, 0.75)';
         ctx.lineWidth = 1;
         ctx.strokeRect(hudX + 0.5, hudY + 0.5, hudW, hudH);
 
         // Header: current zone
-        ctx.fillStyle = 'rgba(255, 80, 55, 0.95)';
-        ctx.font = 'bold 13px monospace';
+        ctx.fillStyle = 'rgba(255, 60, 40, 1.0)';
+        ctx.font = 'bold 15px monospace';
         ctx.textAlign = 'center';
-        ctx.fillText(currentZone || '', hudX + hudW / 2, hudY + 18);
+        ctx.fillText(currentZone || '', hudX + hudW / 2, hudY + 21);
 
         // Divider under header
-        ctx.strokeStyle = 'rgba(255, 40, 30, 0.35)';
+        ctx.strokeStyle = 'rgba(255, 40, 30, 0.5)';
         ctx.beginPath();
-        ctx.moveTo(hudX + 8, hudY + 26);
-        ctx.lineTo(hudX + hudW - 8, hudY + 26);
+        ctx.moveTo(hudX + 8, hudY + 30);
+        ctx.lineTo(hudX + hudW - 8, hudY + 30);
         ctx.stroke();
 
         // Rows (label left, value right)
-        ctx.font = '13px monospace';
-        var yStart = hudY + 44;
+        ctx.font = '15px monospace';
+        var yStart = hudY + 52;
         function drawRow(label, value, rowIdx, valueColor) {
             var ry = yStart + rowIdx * lineH;
-            ctx.fillStyle = 'rgba(255, 80, 55, 0.6)';
+            ctx.fillStyle = 'rgba(255, 60, 40, 0.9)';
             ctx.textAlign = 'left';
             ctx.fillText(label, hudX + hudPad, ry);
             ctx.fillStyle = valueColor || 'rgba(255, 80, 55, 1.0)';
@@ -689,23 +683,23 @@
 
         var distTraveled = Math.max(0, G.SPAWN_Y - player.y);
         var distMiles = Math.round(distTraveled / 100);
-        drawRow('DIST', distMiles + ' MI', 0);
+        drawRow('DISTANCE', distMiles + ' MI', 0);
 
         var headingDeg = (((-player.rot * 180 / Math.PI) + 90) % 360 + 360) % 360;
         var cardinal = ['N','NE','E','SE','S','SW','W','NW'][Math.round(headingDeg / 45) % 8];
         var hdgNum = Math.round(headingDeg);
         var hdgPad = hdgNum < 10 ? '00' : (hdgNum < 100 ? '0' : '');
-        drawRow('HDG', cardinal + ' ' + hdgPad + hdgNum + '\u00B0', 1);
+        drawRow('HEADING', cardinal + ' ' + hdgPad + hdgNum + '\u00B0', 1);
 
         var speedPct = Math.round(Math.abs(speed) / G.MAX_SPEED * 100);
-        drawRow('SPD', speedPct + '%', 2);
+        drawRow('SPEED', speedPct + '%', 2);
 
-        // PING row — stacked bars, one per available slot. Bars disappear as
+        // PINGS row — stacked bars, one per available slot. Bars disappear as
         // pings are fired and reappear as the pulses expire.
         var pingRy = yStart + 3 * lineH;
-        ctx.fillStyle = 'rgba(255, 80, 55, 0.6)';
+        ctx.fillStyle = 'rgba(255, 60, 40, 0.9)';
         ctx.textAlign = 'left';
-        ctx.fillText('PING', hudX + hudPad, pingRy);
+        ctx.fillText('PINGS', hudX + hudPad, pingRy);
 
         var activePings = 0;
         for (var pi = 0; pi < G.pulses.length; pi++) {
@@ -713,8 +707,8 @@
         }
         var availablePings = Math.max(0, MAX_ACTIVE_PINGS - activePings);
 
-        var pbW = 4;
-        var pbH = 9;
+        var pbW = 5;
+        var pbH = 11;
         var pbGap = 2;
         var pbTotalW = MAX_ACTIVE_PINGS * pbW + (MAX_ACTIVE_PINGS - 1) * pbGap;
         var pbX = hudX + hudW - hudPad - pbTotalW;
@@ -724,14 +718,14 @@
             var isAvailable = bi < availablePings;
             ctx.fillStyle = isAvailable
                 ? 'rgba(255, 80, 55, 1.0)'
-                : 'rgba(255, 80, 55, 0.12)';
+                : 'rgba(255, 80, 55, 0.18)';
             ctx.fillRect(bx, pbY, pbW, pbH);
         }
 
         var torpColor = torpedoes > 0
             ? 'rgba(255, 140, 40, 1.0)'
-            : 'rgba(160, 60, 50, 0.7)';
-        drawRow('TORP', torpedoes + '/' + G.MAX_TORPEDOES, 4, torpColor);
+            : 'rgba(160, 60, 50, 0.8)';
+        drawRow('TORPEDO', torpedoes + '/' + G.MAX_TORPEDOES, 4, torpColor);
 
         // --- Silent running indicator (kept separate, unobtrusive) ---
         if (silentRunning) {
@@ -750,15 +744,6 @@
             ctx.textAlign = 'center';
             ctx.fillText('[ WASD ] MOVE   [ SPACE ] PING   [ SHIFT ] SILENT   [ F ] TORPEDO   [ P ] PAUSE', canvasW / 2, canvasH - 25);
         }
-    }
-
-    // --- Scoring helpers ---
-    function getRank(score) {
-        if (score >= 1200) return 'S';
-        if (score >= 1100) return 'A';
-        if (score >= 950) return 'B';
-        if (score >= 800) return 'C';
-        return 'D';
     }
 
     function getDeathTip(cause) {
@@ -788,15 +773,5 @@
         drawWinScreen: drawWinScreen,
         drawDeathScreen: drawDeathScreen,
         drawHUD: drawHUD,
-        getRank: getRank,
-        computeScore: function (elapsed) {
-            var scoreTimeBonus = Math.max(0, 300 - Math.floor(elapsed));
-            var scorePingPenalty = G.pingCount * 5;
-            return {
-                total: Math.max(0, 1000 + scoreTimeBonus - scorePingPenalty),
-                timeBonus: scoreTimeBonus,
-                pingPenalty: scorePingPenalty,
-            };
-        },
     };
 })();

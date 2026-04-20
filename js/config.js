@@ -13,7 +13,6 @@
     // --- Movement ---
     G.ACCEL = 80;
     G.BRAKE = 15;
-    G.SILENT_BRAKE = 55;
     G.MAX_SPEED = 100;
     G.TURN_ACCEL = 1.0;
     G.TURN_DRAG = 1.5;
@@ -103,6 +102,5 @@
     ];
 
     // --- Storage Keys ---
-    G.BEST_KEY = 'subsonar_best';
     G.TUTORIAL_PLAYED_KEY = 'subsonar_played';
 })();

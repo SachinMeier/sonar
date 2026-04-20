@@ -96,14 +96,42 @@
         var zone2Top = G.zoneYBoundary(0.50);
         var zone3Top = G.zoneYBoundary(0.75);
 
-        // === ZONE 1: OPEN WATERS (tutorial pacing) ===
-        placeMine(G.SPAWN_Y - 1200, 60);
-        placeMine(G.SPAWN_Y - 1800, 80);
-        placeMine(G.SPAWN_Y - 2200, 100);
+        // === ZONE 0: OPEN WATERS (tutorial pacing) ===
+        // Zone 0 ends at SPAWN_Y - ~2912. Mines live entirely inside that window
+        // so the tutorial section is the one teaching the mine mechanic.
+        // Sparse intro — the tutorial's mine warning appears at ~600px.
+        placeMine(G.SPAWN_Y - 1100, 60);
+        placeMine(G.SPAWN_Y - 1300, 60);
+        placeMine(G.SPAWN_Y - 1500, 60);
+        placeMine(G.SPAWN_Y - 1700, 80);
+        placeMine(G.SPAWN_Y - 1900, 80);
+        // Density rises as the player gets comfortable.
+        placeMine(G.SPAWN_Y - 2050, 60);
+        placeMine(G.SPAWN_Y - 2200, 60);
+        placeMine(G.SPAWN_Y - 2350, 60);
+        placeMine(G.SPAWN_Y - 2500, 60);
+        // Tight pack at the end of Open Waters.
+        placeMine(G.SPAWN_Y - 2600, 50);
+        placeMine(G.SPAWN_Y - 2680, 50);
+        placeMine(G.SPAWN_Y - 2760, 50);
+        placeMine(G.SPAWN_Y - 2830, 50);
+        placeMine(G.SPAWN_Y - 2890, 40);
+        // Shark + sub intros happen at the very tail of Open Waters / start of Narrows.
         placeShark(G.SPAWN_Y - 3000, 200);
-        placeMine(G.SPAWN_Y - 3200, 120);
+        // === ZONE 1 LEAD-IN: remaining mines spill into early Narrows. ===
+        placeMine(G.SPAWN_Y - 3100, 60);
+        placeMine(G.SPAWN_Y - 3300, 80);
+        placeMine(G.SPAWN_Y - 3500, 80);
+        placeMine(G.SPAWN_Y - 3700, 80);
+        placeMine(G.SPAWN_Y - 3900, 80);
+        placeMine(G.SPAWN_Y - 4100, 80);
         placeEnemySub(G.SPAWN_Y - 4200, 100);
-        placeMineCluster(G.SPAWN_Y - 4800, 3);
+        placeMine(G.SPAWN_Y - 4350, 80);
+        placeMine(G.SPAWN_Y - 4550, 80);
+        placeMine(G.SPAWN_Y - 4750, 80);
+        placeMine(G.SPAWN_Y - 4950, 80);
+        placeMine(G.SPAWN_Y - 5150, 80);
+        placeMine(G.SPAWN_Y - 5350, 80);
         if (rand() < 0.5) {
             placeShark(zone1Top + 500, 300);
         }
@@ -216,21 +244,12 @@
     function checkCollisions(player, spawnSafeTimer) {
         if (spawnSafeTimer > 0) return null;
 
-        // 5-point collision hull matching the sub's roundedRect(60, 24, 10)
+        // Precise collision against the sub's drawn shape — roundedRect(60, 24, 10).
+        // Transform each object's center into the sub's local frame and compare
+        // its collision radius to the signed distance from the rounded rect.
+        var HW = 30, HH = 12, R = 10;
         var cosR = Math.cos(player.rot);
         var sinR = Math.sin(player.rot);
-        // Perpendicular (left = port, right = starboard)
-        var perpX = -sinR;
-        var perpY = cosR;
-
-        // Points: [offsetX along heading, offsetY perpendicular, radius]
-        var points = [
-            [0,   0,  12],  // Center — full body width
-            [28,  0,  6],   // Nose — tapered tip
-            [-28, 0,  6],   // Tail — tapered tip
-            [10,  12, 4],   // Port shoulder — left side, slightly forward
-            [10, -12, 4],   // Starboard shoulder — right side, slightly forward
-        ];
 
         for (var i = 0; i < G.objects.length; i++) {
             var obj = G.objects[i];
@@ -240,14 +259,12 @@
                  obj.type === G.OBJ_TYPE.SHARK ? G.COLLISION_RADII.shark :
                  G.COLLISION_RADII.enemySub);
 
-            for (var p = 0; p < points.length; p++) {
-                var pt = points[p];
-                var px = player.x + cosR * pt[0] + perpX * pt[1];
-                var py = player.y + sinR * pt[0] + perpY * pt[1];
-                var dx = px - obj.x, dy = py - obj.y;
-                var minDist = pt[2] + objRadius;
-                if (dx * dx + dy * dy < minDist * minDist) return obj;
-            }
+            var dx = obj.x - player.x;
+            var dy = obj.y - player.y;
+            var lx = dx * cosR + dy * sinR;
+            var ly = -dx * sinR + dy * cosR;
+
+            if (G.shapes.sdRoundedRect(lx, ly, HW, HH, R) < objRadius) return obj;
         }
         return null;
     }

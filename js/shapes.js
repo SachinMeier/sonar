@@ -80,6 +80,33 @@
         return a;
     }
 
+    // Signed distance from a point to an axis-aligned rounded rectangle
+    // centered at the origin. Half-extents (hw, hh), corner radius r.
+    // Negative inside, zero on edge, positive outside.
+    function sdRoundedRect(px, py, hw, hh, r) {
+        var ax = Math.abs(px) - (hw - r);
+        var ay = Math.abs(py) - (hh - r);
+        var qx = Math.max(ax, 0);
+        var qy = Math.max(ay, 0);
+        var outside = Math.sqrt(qx * qx + qy * qy);
+        var inside = Math.min(Math.max(ax, ay), 0);
+        return outside + inside - r;
+    }
+
+    // Ray-casting point-in-polygon for a closed polygon in vertex order.
+    function pointInPolygon(px, py, poly) {
+        var inside = false;
+        for (var i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            var xi = poly[i][0], yi = poly[i][1];
+            var xj = poly[j][0], yj = poly[j][1];
+            if (((yi > py) !== (yj > py)) &&
+                (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
     G.shapes = {
         roundedRect: roundedRect,
         disc: disc,
@@ -88,5 +115,7 @@
         toSegments: toSegments,
         rayVsSeg: rayVsSeg,
         normalizeAngle: normalizeAngle,
+        sdRoundedRect: sdRoundedRect,
+        pointInPolygon: pointInPolygon,
     };
 })();

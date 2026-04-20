@@ -35,14 +35,9 @@
     var winTime = 0;
     var paused = false;
 
-    // --- Zones & Scoring ---
+    // --- Zones ---
     var currentZone = '';
     var zoneNotifyTimer = 0;
-    var bestScore = 0;
-    try { bestScore = parseInt(localStorage.getItem(G.BEST_KEY) || '0', 10); } catch (e) {}
-    var lastScore = 0;
-    var scoreTimeBonus = 0;
-    var scorePingPenalty = 0;
 
     // --- Spawn safety ---
     var spawnSafeTimer = 0;
@@ -214,9 +209,6 @@
         paused = false;
         currentZone = '';
         zoneNotifyTimer = 0;
-        lastScore = 0;
-        scoreTimeBonus = 0;
-        scorePingPenalty = 0;
         G.wake.length = 0;
         G.echoRings.length = 0;
         G.audio.resetProxWarnTime();
@@ -240,6 +232,11 @@
     var keys = {};
     document.addEventListener('keydown', function (e) {
         keys[e.code] = true;
+        // Arrow keys scroll the page by default — block that during play.
+        if (e.code === 'ArrowUp' || e.code === 'ArrowDown' ||
+            e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
+            e.preventDefault();
+        }
         if (e.code === 'Space' && gameState === G.STATE.PLAYING && !paused) {
             e.preventDefault();
             G.sonar.castPulse(player, gameState, speed, spawnSafeTimer);
@@ -280,6 +277,20 @@
     });
     document.addEventListener('keyup', function (e) { keys[e.code] = false; });
 
+    // Tab-switch safety: if the window loses focus mid-keypress, keyup never
+    // fires and the key stays "held." Stuck Shift latches silent running,
+    // making W feel broken on return. Clear keys and auto-pause on blur.
+    window.addEventListener('blur', function () {
+        for (var k in keys) keys[k] = false;
+        if (gameState === G.STATE.PLAYING && !paused) {
+            paused = true;
+            G.audio.suspendAudio();
+        }
+    });
+    window.addEventListener('focus', function () {
+        lastTime = 0;
+    });
+
     // --- Page title updates ---
     var lastDocTitle = '';
     function updateDocTitle(title) {
@@ -310,7 +321,7 @@
         // --- TITLE STATE ---
         if (gameState === G.STATE.TITLE) {
             updateDocTitle('Sonar');
-            G.renderer.drawTitleScreen(ctx, now, stateTimer, canvasW, canvasH, bestScore);
+            G.renderer.drawTitleScreen(ctx, now, stateTimer, canvasW, canvasH);
             requestAnimationFrame(frame);
             return;
         }
@@ -320,7 +331,7 @@
             updateDocTitle('Sonar - MISSION COMPLETE');
             var torpedoesUsed = G.MAX_TORPEDOES - torpedoes;
             var milesTraveled = Math.round((G.SPAWN_Y - G.DOCK_Y) / 100);
-            G.renderer.drawWinScreen(ctx, stateTimer, canvasW, canvasH, lastScore, bestScore, winTime, startTime, G.pingCount, scoreTimeBonus, scorePingPenalty, torpedoesUsed, milesTraveled);
+            G.renderer.drawWinScreen(ctx, stateTimer, canvasW, canvasH, winTime, startTime, G.pingCount, torpedoesUsed, milesTraveled);
             requestAnimationFrame(frame);
             return;
         }
@@ -373,8 +384,8 @@
 
             // --- Movement ---
             var turnInput = 0;
-            if (keys['KeyA']) turnInput -= 1;
-            if (keys['KeyD']) turnInput += 1;
+            if (keys['KeyA'] || keys['ArrowLeft']) turnInput -= 1;
+            if (keys['KeyD'] || keys['ArrowRight']) turnInput += 1;
             var turnAccel = silentRunning ? G.TURN_ACCEL * 0.4 : G.TURN_ACCEL;
             var maxTurn = silentRunning ? G.MAX_TURN * 0.4 : G.MAX_TURN;
             if (turnInput) {
@@ -388,21 +399,26 @@
             player.rot += turnRate * dt;
 
             var moveInput = 0;
-            if (keys['KeyW']) moveInput += 1;
-            if (keys['KeyS']) moveInput -= 1;
+            if (keys['KeyW'] || keys['ArrowUp']) moveInput += 1;
+            if (keys['KeyS'] || keys['ArrowDown']) moveInput -= 1;
 
-            if (silentRunning && moveInput) {
-                // Silent running: can still accelerate but slower, lower top speed
-                speed += moveInput * G.ACCEL * 0.4 * dt;
-                speed = Math.max(-G.MAX_SPEED * 0.2, Math.min(G.MAX_SPEED * 0.4, speed));
-            } else if (silentRunning) {
-                // Silent running, no input: coast down faster
-                var brakeDrag = G.SILENT_BRAKE * dt;
-                if (Math.abs(speed) < brakeDrag) speed = 0;
-                else speed -= Math.sign(speed) * brakeDrag;
-            } else if (moveInput) {
-                speed += moveInput * G.ACCEL * dt;
-                speed = Math.max(-G.MAX_SPEED * 0.5, Math.min(G.MAX_SPEED, speed));
+            if (moveInput) {
+                var accel = silentRunning ? G.ACCEL * 0.4 : G.ACCEL;
+                var maxFwd = silentRunning ? G.MAX_SPEED * 0.4 : G.MAX_SPEED;
+                var maxRev = silentRunning ? G.MAX_SPEED * 0.2 : G.MAX_SPEED * 0.5;
+                // Engine only thrusts when below its cap in the input direction.
+                // If speed exceeds the cap (e.g. just engaged silent at full ahead),
+                // water drag pulls it down — no instant brake.
+                var canThrust = moveInput > 0 ? speed < maxFwd : speed > -maxRev;
+                if (canThrust) {
+                    speed += moveInput * accel * dt;
+                    if (moveInput > 0 && speed > maxFwd) speed = maxFwd;
+                    else if (moveInput < 0 && speed < -maxRev) speed = -maxRev;
+                } else {
+                    var drag = G.BRAKE * dt;
+                    if (Math.abs(speed) < drag) speed = 0;
+                    else speed -= Math.sign(speed) * drag;
+                }
             } else {
                 var drag = G.BRAKE * dt;
                 if (Math.abs(speed) < drag) speed = 0;
@@ -414,17 +430,33 @@
                 player.y += Math.sin(player.rot) * speed * dt;
             }
 
-            // --- Wall collision (death) — check 5-point hull ---
-            var wcCos = Math.cos(player.rot);
-            var wcSin = Math.sin(player.rot);
-            var wcPerpX = -wcSin;
-            var wcPerpY = wcCos;
+            // --- Wall collision (death) — test every vertex of the drawn hull ---
+            // Uses the same points drawn on screen, so death lines up with what
+            // the player sees touch the wall. No extra radius buffer is added.
             var wallHit = false;
-            var wallPts = [[0,0],[28,0],[-28,0],[10,12],[10,-12]];
-            for (var wp = 0; wp < wallPts.length; wp++) {
-                var wx = player.x + wcCos * wallPts[wp][0] + wcPerpX * wallPts[wp][1];
-                var wy = player.y + wcSin * wallPts[wp][0] + wcPerpY * wallPts[wp][1];
-                if (!G.canyon.isInsideCanyon(wx, wy)) { wallHit = true; break; }
+            var hullVerts = G.shapes.transformVerts(player.shape, player.x, player.y, player.rot);
+            for (var wp = 0; wp < hullVerts.length; wp++) {
+                var wx = hullVerts[wp][0], wy = hullVerts[wp][1];
+                if (wx < G.canyon.interpolateWallX(G.leftWall, wy) ||
+                    wx > G.canyon.interpolateWallX(G.rightWall, wy)) {
+                    wallHit = true;
+                    break;
+                }
+            }
+            // Rocks in the Freedom zone — polygons separate from the canyon walls.
+            if (!wallHit && G.rockFormations.length > 0) {
+                for (var rk = 0; rk < G.rockFormations.length && !wallHit; rk++) {
+                    var rock = G.rockFormations[rk];
+                    // Broad-phase: skip rocks whose bbox is far from the sub.
+                    var rbx = rock[0][0], rby = rock[0][1];
+                    if (Math.abs(player.x - rbx) > 120 || Math.abs(player.y - rby) > 120) continue;
+                    for (var wp = 0; wp < hullVerts.length; wp++) {
+                        if (G.shapes.pointInPolygon(hullVerts[wp][0], hullVerts[wp][1], rock)) {
+                            wallHit = true;
+                            break;
+                        }
+                    }
+                }
             }
             if (wallHit) die('wall', null);
             player.y = Math.max(30, Math.min(G.WORLD_H - 30, player.y));
@@ -454,15 +486,6 @@
                 gameState = G.STATE.WIN;
                 stateTimer = 0;
                 winTime = performance.now() / 1000;
-                var elapsed = winTime - startTime;
-                var scoreResult = G.renderer.computeScore(elapsed);
-                lastScore = scoreResult.total;
-                scoreTimeBonus = scoreResult.timeBonus;
-                scorePingPenalty = scoreResult.pingPenalty;
-                if (lastScore > bestScore) {
-                    bestScore = lastScore;
-                    try { localStorage.setItem(G.BEST_KEY, String(bestScore)); } catch (e) {}
-                }
                 G.audio.updateEngineAudio(0, true, 0);
                 G.audio.updateHeartbeat(0);
                 G.audio.playWinFanfare();
